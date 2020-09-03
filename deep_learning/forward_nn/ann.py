@@ -1,8 +1,7 @@
 import numpy as np
 from utils.math import *
-import tensorflow as tf
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras import Model, layers
+from keras.models import Sequential
+from keras.layers import Dense
 
 
 # 建立ANN
@@ -73,3 +72,19 @@ class NeuralNetwork:
 
 
 class Ann:
+    def __init__(self):
+        self.seed = 2020
+
+    def mlp(self, x, y):
+        x = x.values
+        y = y.values
+        model = Sequential()
+        model.add(Dense(68, input_dim=33, activation='relu'))
+        model.add(Dense(68, activation='relu'))
+        model.add(Dense(1, activation='sigmoid'))
+
+        model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+        model.fit(x=x, y=y, epochs=10, batch_size=100, validation_split=0.2)
+
+        return model

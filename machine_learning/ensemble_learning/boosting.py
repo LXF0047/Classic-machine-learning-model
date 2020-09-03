@@ -3,15 +3,12 @@ import lightgbm as lgb
 from ngboost.ngboost import NGBoost
 from catboost import CatBoostClassifier
 from utils.utils import train_data_split
+from ngboost import NGBClassifier
+from ngboost.distns import k_categorical, Bernoulli
 
 
 class BoostingModules(object):
     def __init__(self, train_data):
-        self.xgb_params = {
-            'booster': 'gbtree',
-            'objective': 'binary:logistic',
-            'eval_metric': 'auc',
-        }
         self.rounds = 2000
         self.early_stop = 200
         self.X_t, self.X_v, self.y_t, self.y_v = train_data_split(train_data)
@@ -165,7 +162,6 @@ class BoostingModules(object):
 
         gbm = lgb.train(params, lgb_train, num_boost_round=self.rounds, valid_sets=lgb_eval, early_stopping_rounds=self.early_stop)
 
-        # res = gbm.predict(self.test, num_iteration=gbm.best_iteration)
         return gbm
 
     def cb_model(self, category_cols=None):
@@ -183,23 +179,7 @@ class BoostingModules(object):
         print(importance)
         return model
 
-    def ng_model(self, params):
-        from ngboost.learners import default_tree_learner
-        from ngboost.scores import MLE
-        from ngboost.distns import Normal
-        from sklearn.metrics import mean_squared_error
-
-        ngb = NGBoost(Base=default_tree_learner, Dist=Normal, Score=MLE(), natural_gradient=True,
-                      verbose=False)
-        ngb.fit(self.X_t, self.y_t)
-
-        Y_preds = ngb.predict(self.X_v)
-        Y_dists = ngb.pred_dist(self.X_v)
-
-        # 检验均方误差 test Mean Squared Error
-        test_MSE = mean_squared_error(Y_preds, self.y_v)
-        print('Test MSE', test_MSE)
-
-        # 检验负对数似然test Negative Log Likelihood
-        test_NLL = -Y_dists.logpdf(self.y_v.flatten()).mean()
-        print('Test NLL', test_NLL)
+    def ng_model(self):
+        ngb_cat = NGBClassifier(Dist=k_categorical(2), verbose=True)
+        ng_clf = ngb_cat.fit(self.X_t, self.y_t)
+        return ng_clf
