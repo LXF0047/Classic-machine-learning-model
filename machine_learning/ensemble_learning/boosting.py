@@ -161,7 +161,7 @@ class BoostingModules(object):
         lgb_eval = lgb.Dataset(self.X_v, self.y_v, reference=lgb_train)
 
         gbm = lgb.train(params, lgb_train, num_boost_round=self.rounds, valid_sets=lgb_eval, early_stopping_rounds=self.early_stop)
-
+        print(gbm.feature_importance())
         return gbm
 
     def cb_model(self, category_cols=None):
@@ -182,4 +182,5 @@ class BoostingModules(object):
     def ng_model(self):
         ngb_cat = NGBClassifier(Dist=k_categorical(2), verbose=True)
         ng_clf = ngb_cat.fit(self.X_t, self.y_t)
+        print(ng_clf.feature_importances_)
         return ng_clf
