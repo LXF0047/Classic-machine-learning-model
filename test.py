@@ -1,13 +1,11 @@
 from sklearn.datasets import load_iris
-from boosting import BoostingModules
-from ann import NeuralNetwork
+from machine_learning.ensemble_learning.boosting import BoostingModules
+from deep_learning.forward_nn import ann
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
-from sklearn.model_selection import cross_val_score
 from utils.utils import train_data_split
 import xgboost as _xgb
 from sklearn.metrics import f1_score
-from utils.tools import eda
 
 
 def load_data():
@@ -42,32 +40,34 @@ def train_handel(data):
 
 
 def analysis(train):
-    # boost = BoostingModules(train)
-    # # boost.rounds = 10
-    # xgb_params = {
-    #               'booster': 'gbtree',
-    #               'objective': 'binary:logistic',
-    #               'eval_metric': 'auc',
-    #               'verbosity': 0
-    #               }
-    # xgb_model = boost.xgb_model(xgb_params)
-    #
-    # lgb_params = {
-    #               'boosting_type': 'gbdt',
-    #               'objective': 'binary',
-    #               'metric': {'binary_logloss', 'auc'},
-    #              }
-    # lgb_model = boost.lgb_model(lgb_params)
-    #
-    # cb_model = boost.cb_model()
+    boost = BoostingModules(train)
+    boost.rounds = 1000
+    boost.early_stop = 200
+    xgb_params = {
+                  'booster': 'gbtree',
+                  'objective': 'binary:logistic',
+                  'eval_metric': 'auc',
+                  'verbosity': 1
+                  }
+    xgb_model = boost.xgb_model(xgb_params)
+
+    lgb_params = {
+                  'boosting_type': 'gbdt',
+                  'objective': 'binary',
+                  'metric': {'binary_logloss', 'auc'},
+                 }
+    lgb_model = boost.lgb_model(lgb_params)
+
+    cb_model = boost.cb_model()
+
+    ng_model = boost.ng_model()
 
     # ANN
     X_t, X_v, y_t, y_v = train_data_split(train)
-    ann_m = NeuralNetwork([33, 68, 68, 1])
-    ann_m.fit(X_t, y_t, epochs=10, learning_rate=0.1)
+    ann_m = ann.Ann()
+    ann_clf = ann_m.mlp(X_t, y_t)
 
-    # return xgb_model, lgb_model, cb_model, ann_m
-    return ann_m
+    return xgb_model, lgb_model, cb_model, ann_clf, ng_model  # , ann_clf, ng_model
 
 
 def cross_val(dt, test_df, k=3):
@@ -90,22 +90,34 @@ def cross_val(dt, test_df, k=3):
     return [round(x) for x in _result]
 
 
+def fit_predict(r):
+    # fit
+    xgb_c, lgb_c, cb_c, ann_c, ng_model = analysis(train, r)  # , ann_c, ng_model
+
+    # predict
+    test_xgb_res = xgb_c.predict(_xgb.DMatrix(test_feature))
+    test_lgb_res = lgb_c.predict(test_feature)
+    test_cb_res = cb_c.predict(test_feature)
+    test_ann_res = ann_c.predict(test_feature)
+    test_ngb_res = ng_model.predict(test_feature)
+
+    # score
+    test_xgb_res = [round(x) for x in test_xgb_res]
+    test_lgb_res = [round(x) for x in test_lgb_res]
+    test_ann_res = [round(x[0]) for x in test_ann_res.tolist()]
+
+    xgb_f1_score = f1_score(test_xgb_res, test_label)  # 3
+    lgb_f1_score = f1_score(test_lgb_res, test_label)  # 33
+    cb_f1_score = f1_score(test_cb_res, test_label)  # 245
+    ann_f1_score = f1_score(test_ann_res, test_label)  #
+    ng_f1_score = f1_score(test_ngb_res, test_label)
+
+    print('XGB: %s\nLGB: %s\nCB: %s\nANN: %s\nNGB: %s\n' % (
+    xgb_f1_score, lgb_f1_score, cb_f1_score, ann_f1_score, ng_f1_score))
+
+
 if __name__ == '__main__':
+    # load data
     train, test = load_eta_data()
     test_feature, test_label = train_handel(test)
-
-    xgb_c, lgb_c, cb_c, ann_c = analysis(train)
-    # test_xgb_res = xgb_c.predict(_xgb.DMatrix(test_feature))
-    # test_lgb_res = lgb_c.predict(test_feature)
-    # test_cb_res = cb_c.predict(test_feature)
-    test_ann_res = ann_c.predict(test_feature)
-
-    # test_res = cross_val(train, test_feature, k=10)
-
-    # xgb_f1_score = f1_score(test_xgb_res, test_label)  # 3
-    # lgb_f1_score = f1_score(test_lgb_res, test_label)  # 33
-    # cb_f1_score = f1_score(test_cb_res, test_label)  # 245
-    ann_f1_score = f1_score(test_ann_res, test_label)  # 245
-
-    # print(xgb_f1_score, lgb_f1_score, cb_f1_score, ann_f1_score)
-    print(ann_f1_score)
+    fit_predict()
