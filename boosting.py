@@ -1,21 +1,24 @@
 import xgboost as xgb
+import lightgbm as lgb
+from ngboost.ngboost import NGBoost
+from catboost import CatBoostClassifier
+from utils.utils import train_data_split
+
 
 class BoostingModules(object):
-    def __init__(self):
-        self.category =
-    def xgb_model(X_t, X_v, y_t, y_v, test):
-        """
-        :param X_t: 训练集
-        :param X_v: 验证集
-        :param y_t: 训练集标签
-        :param y_v: 验证集标签
-        :param test: 测试集数据
-        :return: 返回值为对测试集预测结果
-        """
+    def __init__(self, train_data):
+        self.xgb_params = {
+            'booster': 'gbtree',
+            'objective': 'binary:logistic',
+            'eval_metric': 'auc',
+        }
+        self.rounds = 2000
+        self.early_stop = 200
+        self.X_t, self.X_v, self.y_t, self.y_v = train_data_split(train_data)
 
-        xgb_val = xgb.DMatrix(X_v, label=y_v)
-        xgb_train = xgb.DMatrix(X_t, label=y_t)
-        xgb_test = xgb.DMatrix(test)
+    def xgb_model(self, params):
+        xgb_val = xgb.DMatrix(self.X_v, label=self.y_v)
+        xgb_train = xgb.DMatrix(self.X_t, label=self.y_t)
 
         # 基本参数
         """
@@ -148,29 +151,55 @@ class BoostingModules(object):
                         interval-regression-accuracy]
         """
 
-        params = {
-            'booster': 'gbtree',
-            'objective': 'binary:logistic',
-            'eval_metric': 'auc',
-            #   'gamma': 0.1,
-            #   'max_depth': 8,
-            #   'alpha': 0,
-            # 'lambda': 10,
-            # 'subsample': 0.7,
-            #   'colsample_bytree': 0.5,
-            #   'min_child_weight': 3,
-            # 'eta': 0.01,  # 如同学习率
-            #   'seed': 1000,
-            # 'n_jobs': -1,  # cpu 线程数
-            #   'missing': 1,
-            #   'scale_pos_weight': (np.sum(y==0)/np.sum(y==1))
-        }
-
         plst = list(params.items())
-        num_rounds = 5000  # 迭代次数
+        num_rounds = self.rounds  # 迭代次数
         watchlist = [(xgb_train, 'train'), (xgb_val, 'val')]
-        # 训练模型并保存
-        # early_stopping_rounds 当设置的迭代次数较大时，early_stopping_rounds 可在一定的迭代次数内准确率没有提升就停止训练
-        model = xgb.train(plst, xgb_train, num_rounds, watchlist, early_stopping_rounds=200)
-        res = model.predict(xgb_test)
-        return res
+
+        model = xgb.train(plst, xgb_train, num_rounds, watchlist, early_stopping_rounds=self.early_stop)
+        print(model.get_fscore())
+        return model
+
+    def lgb_model(self, params):
+        lgb_train = lgb.Dataset(self.X_t, self.y_t)
+        lgb_eval = lgb.Dataset(self.X_v, self.y_v, reference=lgb_train)
+
+        gbm = lgb.train(params, lgb_train, num_boost_round=self.rounds, valid_sets=lgb_eval, early_stopping_rounds=self.early_stop)
+
+        # res = gbm.predict(self.test, num_iteration=gbm.best_iteration)
+        return gbm
+
+    def cb_model(self, category_cols=None):
+        if category_cols is None:
+            category_cols = []
+        category_id = []  #
+        for index, value in enumerate(self.X_t.columns):
+            if value in category_cols:
+                category_id.append(index)
+        model = CatBoostClassifier(iterations=self.rounds, learning_rate=0.05, cat_features=category_id, loss_function='Logloss',
+                                   logging_level='Verbose', eval_metric='AUC')
+        model.fit(self.X_t, self.y_t, eval_set=(self.X_v, self.y_v), early_stopping_rounds=self.early_stop)
+        # res = model.predict_proba(self.test)[:, 1]
+        importance = model.get_feature_importance(prettified=True)# 显示特征重要程度
+        print(importance)
+        return model
+
+    def ng_model(self, params):
+        from ngboost.learners import default_tree_learner
+        from ngboost.scores import MLE
+        from ngboost.distns import Normal
+        from sklearn.metrics import mean_squared_error
+
+        ngb = NGBoost(Base=default_tree_learner, Dist=Normal, Score=MLE(), natural_gradient=True,
+                      verbose=False)
+        ngb.fit(self.X_t, self.y_t)
+
+        Y_preds = ngb.predict(self.X_v)
+        Y_dists = ngb.pred_dist(self.X_v)
+
+        # 检验均方误差 test Mean Squared Error
+        test_MSE = mean_squared_error(Y_preds, self.y_v)
+        print('Test MSE', test_MSE)
+
+        # 检验负对数似然test Negative Log Likelihood
+        test_NLL = -Y_dists.logpdf(self.y_v.flatten()).mean()
+        print('Test NLL', test_NLL)
