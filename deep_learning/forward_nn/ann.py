@@ -79,7 +79,7 @@ class Ann:
         x = x.values
         y = y.values
         model = Sequential()
-        model.add(Dense(68, input_dim=33, activation='relu'))
+        model.add(Dense(68, input_dim=x.shape[1], activation='relu'))
         model.add(Dense(68, activation='relu'))
         model.add(Dense(1, activation='sigmoid'))
 
