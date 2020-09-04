@@ -2,6 +2,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
 
+# 数据集划分
 def train_data_split(df, label_name='label', id_name='id', _size=0.3):
     if label_name not in df.columns or id_name not in df.columns:
         print('[ERROR] The name of either ID column or LABEL column is wrong')
@@ -14,12 +15,13 @@ def train_data_split(df, label_name='label', id_name='id', _size=0.3):
     return x_train, x_test, y_train, y_test
 
 
+# 根据字典数据画柱状图，多用于特征重要程度图
 def draw_from_dict(dicdata, RANGE=None, axis=0):
     if RANGE is None:
         RANGE = len(dicdata)
     # dicdata：字典的数据。
     # RANGE：截取显示的字典的长度。
-    # heng=0，代表条状图的柱子是竖直向上的。axis=1，代表柱子是横向的。考虑到文字是从左到右的，让柱子横向排列更容易观察坐标轴。
+    # axis=0，代表条状图的柱子是竖直向上的。axis=1，代表柱子是横向的。考虑到文字是从左到右的，让柱子横向排列更容易观察坐标轴。
     by_value = sorted(dicdata.items(), key=lambda item: item[1], reverse=False)
     x = []
     y = []
