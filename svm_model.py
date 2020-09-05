@@ -1,8 +1,8 @@
 from sklearn import svm
 
 
-def svm_classification():
+def svc():
     model = svm.SVC()
 
-def svm_regress():
+def svr():
     model = svm.SVR
