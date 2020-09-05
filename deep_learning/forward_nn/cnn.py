@@ -1,36 +1,25 @@
 from keras.models import Sequential
 from keras.layers import Dense, Activation, Flatten, Convolution1D, Dropout
 from utils.utils import train_data_split
-
-
-def cnn_1d(train):
-    x_t, x_v, y_t, y_v = train_data_split(train)
-    model = Sequential()
-    model.add(Convolution1D(nb_filter=5, filter_length=1, input_shape=(1, 33)))
-    model.add(Activation('relu'))
-    model.add(Flatten())
-    model.add(Dropout(0.4))
-    model.add(Dense(2048, activation='relu'))
-    model.add(Dense(1024, activation='relu'))
-    model.add(Dense(nb_class))
-    model.add(Activation('sigmoid'))
-
-    model.predict()
+from utils.score import _f1_score
 
 
 def cnn_1d_(train):
     import numpy as np
     import keras
 
+    seed = 2020
     x_t, x_v, y_t, y_v = train_data_split(train)
-    data_1d = np.expand_dims(x_t, 0)
-    print(data_1d)
-    data_1d = np.expand_dims(data_1d, 2)
+    train = x_t.values.reshape(x_t.shape[0], x_t.shape[1], 1)
+    label = y_t.values
+
+    test = x_v.values.reshape(x_v.shape[0], x_v.shape[1], 1)
+    test_label = y_v.values
 
     # 定义卷积层
     filters = 1  # 卷积核数量为 1
     kernel_size = 5  # 卷积核大小为 5
-    convolution_1d_layer = keras.layers.convolutional.Conv1D(filters, kernel_size, strides=1, padding='valid',
+    convolution_1d_layer = keras.layers.convolutional.Conv1D(filters, kernel_size, strides=1, padding='same',
                                                              input_shape=(x_t.shape[1], 1), activation="relu",
                                                              name="convolution_1d_layer")
     # 定义最大化池化层
@@ -40,9 +29,10 @@ def cnn_1d_(train):
     reshape_layer = keras.layers.core.Flatten(name="reshape_layer")
 
     # 定义全链接层
-    full_connect_layer = keras.layers.Dense(5, kernel_initializer=keras.initializers.RandomNormal(mean=0.0, stddev=0.1,
+    full_connect_layer = keras.layers.Dense(1, kernel_initializer=keras.initializers.RandomNormal(mean=0.0, stddev=0.1,
                                                                                                   seed=seed),
-                                            bias_initializer="random_normal", use_bias=True, name="full_connect_layer")
+                                            bias_initializer="random_normal", use_bias=True, activation='sigmoid',
+                                            name="full_connect_layer")
 
     # 编译模型
     model = keras.Sequential()
@@ -51,12 +41,20 @@ def cnn_1d_(train):
     model.add(reshape_layer)
     model.add(full_connect_layer)
 
-    # 打印 full_connect_layer 层的输出
-    output = keras.Model(inputs=model.input, outputs=model.get_layer('full_connect_layer').output).predict(data_1d)
-    print(output)
+    # compile
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+
+    # fit
+    model.fit(train, label, epochs=50, batch_size=100, validation_split=0.2)
 
     # 打印网络结构
     print(model.summary())
+
+    # 验证集效果
+    res = model.predict(test)
+    _res = [round(x[0]) for x in res.tolist()]
+    _score = _f1_score(_res, test_label)
+    print('===F1 score: %s===' % _score)
 
     return model
 
