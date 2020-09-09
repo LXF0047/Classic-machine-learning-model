@@ -17,7 +17,7 @@ def lstm(train):
 
     # params
     nb_lstm_outputs = 30  # 神经元个数
-    data_input = 6
+    data_input = x_t.shape[1]
 
     # build model
     model = Sequential()
