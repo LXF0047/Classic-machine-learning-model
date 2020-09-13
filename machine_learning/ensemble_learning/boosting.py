@@ -12,6 +12,7 @@ class BoostingModules(object):
         self.rounds = 2000
         self.early_stop = 200
         self.X_t, self.X_v, self.y_t, self.y_v = train_data_split(train_data)
+        self.modelname = None
 
     def xgb_model(self, params):
         xgb_val = xgb.DMatrix(self.X_v, label=self.y_v)
@@ -153,15 +154,21 @@ class BoostingModules(object):
         watchlist = [(xgb_train, 'train'), (xgb_val, 'val')]
 
         model = xgb.train(plst, xgb_train, num_rounds, watchlist, early_stopping_rounds=self.early_stop)
-        print(model.get_fscore())
+        # print(model.get_fscore())
+
+        if self.modelname is not None:
+            model.save_model(self.modelname + '_xgb.model')
         return model
 
     def lgb_model(self, params):
         lgb_train = lgb.Dataset(self.X_t, self.y_t)
         lgb_eval = lgb.Dataset(self.X_v, self.y_v, reference=lgb_train)
 
-        gbm = lgb.train(params, lgb_train, num_boost_round=self.rounds, valid_sets=lgb_eval, early_stopping_rounds=self.early_stop)
-        print(gbm.feature_importance())
+        gbm = lgb.train(params, lgb_train, num_boost_round=self.rounds, valid_sets=lgb_eval,
+                        early_stopping_rounds=self.early_stop)
+        # print(gbm.feature_importance())
+        if self.modelname is not None:
+            gbm.save_model(self.modelname + '_lgb.model')
         return gbm
 
     def cb_model(self, category_cols=None):
@@ -171,12 +178,14 @@ class BoostingModules(object):
         for index, value in enumerate(self.X_t.columns):
             if value in category_cols:
                 category_id.append(index)
-        model = CatBoostClassifier(iterations=self.rounds, learning_rate=0.05, cat_features=category_id, loss_function='Logloss',
+        model = CatBoostClassifier(iterations=self.rounds, learning_rate=0.1, cat_features=category_id, loss_function='Logloss',
                                    logging_level='Verbose', eval_metric='AUC')
         model.fit(self.X_t, self.y_t, eval_set=(self.X_v, self.y_v), early_stopping_rounds=self.early_stop)
         # res = model.predict_proba(self.test)[:, 1]
-        importance = model.get_feature_importance(prettified=True)# 显示特征重要程度
-        print(importance)
+        # importance = model.get_feature_importance(prettified=True)  # 显示特征重要程度
+        # print(importance)
+        if self.modelname is not None:
+            model.save_model(self.modelname + '_cb.model')
         return model
 
     def ng_model(self):
