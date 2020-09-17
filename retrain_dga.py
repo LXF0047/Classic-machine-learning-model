@@ -26,7 +26,7 @@ def train_handel(data):
 
 
 # 加载数据集
-def load_bin_data():
+def load_bin_data(topn=100000, return_all=False):
     dga_bin = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/new_feature/dga_bin.csv'
     legit = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/new_feature/legit.csv'
     black = pd.read_csv(dga_bin)
@@ -34,14 +34,17 @@ def load_bin_data():
     print('black shape %s, %s' % (black.shape[0], black.shape[1]))
     print('white shape %s, %s' % (white.shape[0], white.shape[1]))
 
-    topn = 100000
-
     # 合并黑白样本
+    if topn is None:
+        topn_b, topn_w = black.shape[0], white.shape[0]
+    else:
+        topn_b, topn_w = topn, topn
+
     black['label'] = [1]*black.shape[0]
     white['label'] = [0]*white.shape[0]
     black['id'] = black.index
     white['id'] = white.index
-    data = pd.concat([black.head(topn), white.head(topn)])
+    data = pd.concat([black.head(topn_b), white.head(topn_w)])
     data.drop(['type'], axis=1, inplace=True)
 
     X_t, X_v, y_t, y_v = train_data_split(data, _size=0.2)
@@ -49,7 +52,11 @@ def load_bin_data():
     X_v['label'] = y_v
     X_t['id'] = X_t.index
     X_v['id'] = X_v.index
-    return X_t, X_v
+
+    if return_all:
+        return data.reindex(np.random.permutation(data.index))  # 打乱行顺序
+    else:
+        return X_t, X_v
 
 
 def load_mul_data():
