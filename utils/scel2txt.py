@@ -2,6 +2,7 @@
 import struct
 import os
 
+# ======  处理搜狗细胞词库用  ======
 # 主要两部分
 # 1.全局拼音表，貌似是所有的拼音组合，字典序
 #       格式为(index,len,pinyin)的列表

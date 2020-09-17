@@ -6,12 +6,9 @@ from collections import defaultdict, Counter
 import numpy as np
 import pandas as pd
 from scipy import stats
-from sklearn.externals.joblib.parallel import Parallel, delayed
-from sklearn.externals import joblib
+from joblib.parallel import Parallel, delayed
 from sklearn.feature_extraction.text import CountVectorizer
-import pdb
-import time
-from modules.dga.config import dga_suffix_file
+dga_suffix_file = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/demo/public_suffix.txt'
 
 
 class UnsuitableFeatureOrderException(Exception):
@@ -464,7 +461,7 @@ class DGAExtractFeatures(object):
         if len(self.__joined_dot_split_suffix_free) == 0:
             return [0]
         else:
-            return [consecutive_counter / len(__joined_dot_split_suffix_free)]
+            return [consecutive_counter / len(self.__joined_dot_split_suffix_free)]
     
     
     

@@ -29,7 +29,7 @@ def rf_model(train):
      max_samples=None
     '''
 
-    rfc = RandomForestClassifier(random_state=2020, verbose=1)
+    rfc = RandomForestClassifier(random_state=2020, verbose=1, n_jobs=-1)
     x_t, x_v, y_t, y_v = train_data_split(train)
     rfc.fit(x_t, y_t)
     pre = rfc.predict(x_v)
