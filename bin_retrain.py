@@ -1,11 +1,13 @@
-import xgboost as xgb
-import lightgbm as lgb
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import time
 import os
 from keras.preprocessing import sequence
+from dask_cuda import LocalCUDACluster
+from dask.distributed import Client
+from dask import array as da
+from xgboost.dask import DaskDMatrix
 # from sklearn.metrics import f1_score
 from utils.score import _f1_score, _confusion_metrix
 from utils.utils import train_data_split
@@ -13,6 +15,8 @@ from utils import feature_extraction
 from retrain_dga import load_bin_data, train_handel
 from sklearn.model_selection import GridSearchCV
 from xgboost.sklearn import XGBClassifier
+import xgboost as xgb
+import lightgbm as lgb
 
 
 def sampling_data(sampling=True, clf='bin'):
@@ -150,14 +154,19 @@ def xgb_bin_model(X_t, X_v, y_t, y_v):
     return cv_res.shape[0]
 
 
-def lgb_bin_model(X_t, X_v, y_t, y_v):
+def lgb_mul_model(X_t, X_v, y_t, y_v):
+    n_family = len(set(y_t.tolist()))
     lgb_train = lgb.Dataset(X_t, y_t)
     lgb_eval = lgb.Dataset(X_v, y_v, reference=lgb_train)
     lgb_params = {
         'learning_rate': 0.1,
         'boosting_type': 'gbdt',
-        'objective': 'binary',
-        'metric': {'binary_logloss', 'auc'},
+        'objective': 'multiclass',
+        'num_class': n_family,
+        'metric': 'multi_logloss',
+        # 'device': 'gpu',
+        # 'gpu_platform_id': 0,
+        # 'gpu_device_id': 0,
     }
     gbm = lgb.train(lgb_params, lgb_train, num_boost_round=5000, valid_sets=lgb_eval,
                     early_stopping_rounds=200)
@@ -173,7 +182,8 @@ def xgb_mul_model(X_t, X_v, y_t, y_v):
         'objective': 'multi:softmax',
         'num_class': n_family,
         'eval_metric': 'mlogloss',
-        'verbosity': 0
+        'verbosity': 0,
+        'tree_method': 'gpu_hist'
     }
     plst = list(xgb_params.items())
     num_rounds = 5000  # 迭代次数
@@ -181,6 +191,40 @@ def xgb_mul_model(X_t, X_v, y_t, y_v):
     # 最大化评价参数maximize
     model = xgb.train(plst, xgb_train, num_rounds, watchlist, early_stopping_rounds=200)
     return model
+
+
+def xgb_mul_model_gpu(client, x, y):
+    # 使用多个GPU,报错ImportError: Dask needs to be installed in order to use this module
+    # 没整明白。。
+    # 参考https://xgboost.readthedocs.io/en/latest/gpu/index.html
+    n_family = len(set(y.tolist()))
+    dtrain = DaskDMatrix(client, x, y)
+    output = xgb.dask.train(client,
+                            {'verbosity': 2,
+                             'booster': 'gbtree',
+                             'objective': 'multi:softmax',
+                             'num_class': n_family,
+                             'eval_metric': 'mlogloss',
+                             # Golden line for GPU training
+                             'tree_method': 'gpu_hist'},
+                            dtrain,
+                            num_boost_round=5000, evals=[(dtrain, 'train')])
+    bst = output['booster']
+    history = output['history']
+
+    # you can pass output directly into `predict` too.
+    prediction = xgb.dask.predict(client, bst, dtrain)
+    prediction = prediction.compute()
+    print('Evaluation history:', history)
+    return prediction
+
+
+def xgb_mul_gpu_train():
+    # 多CPU并行训练，没弄明白
+    X_t, X_v, y_t, y_v = load_new_data(clf='mul')
+    with LocalCUDACluster(n_workers=8, threads_per_worker=4) as cluster:
+        with Client(cluster) as client:
+            xgb_mul_model_gpu(client, X_t, y_t)
 
 
 def xgb_bin_train():
@@ -210,6 +254,14 @@ def xgb_mul_train():
     print('模型保存成功')
 
     # print('f1_macro:%s\nf1_micro:%s' % (f1_macro, f1_micro))
+
+
+def lgb_mul_train():
+    print('LGB 新数据及多分类训练开始...')
+    X_t, X_v, y_t, y_v = load_new_data(clf='mul')
+    mul_clf = lgb_mul_model(X_t, X_v, y_t, y_v)
+    mul_clf.save_model('mul_lgb_20200917.model')
+    print('模型保存成功')
 
 
 def xgb_bin_gridsearch():
@@ -349,19 +401,23 @@ def main():
     # xgb二分类调参, 尝试不同数据量对模型调参结果的影响
     # xgb_bin_gridsearch()
     start = time.time()
-    xgb_mul_train()
+    # xgb_mul_train()
+    lgb_mul_train()
     end = time.time()
     dur = end-start
-    print('xgb多分类用时：%s小时%s秒', (dur//3600, dur-dur//3600))
+    h, m, s = int(dur//3600), int((dur % 3600)//60), int(dur % 60)
+    print('用时：%s小时%s分%s秒' % (h, m, s))
 
 
 def check_gpu():
     import tensorflow as tf
-    print('tf.test.is_gpu_available() >>> %s' % tf.test.is_gpu_available())
     print(tf.config.list_physical_devices('GPU'))
 
 
 if __name__ == '__main__':
-    # main()
-    check_gpu()
+    main()
+    # check_gpu()
     # new2vectors()
+    # new = ['qakbot', 'conficker', 'necurs', 'cryptolocker', 'locky', 'suppobox']
+    # for i in new:
+    #     with
