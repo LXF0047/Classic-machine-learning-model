@@ -50,6 +50,52 @@ def handel_white_dga():
             a.write(i+'\n')
 
 
+def res_compare():
+    import pandas as pd
+    from bin_retrain import zrz_family_label
+    res = pd.read_csv('/home/lxf/data/DGA/training_results/mul_lgb_78_res.csv')
+    # names = [x for x in zrz_family_label.keys()]
+    # print(res[res['family'].isin(names)][['family', 'hit_ratio']])
+    low_score = ['murofetweekly', 'enviserv', 'tofsee', 'omexo', 'bebloh']
+    lgb_test_1 = ['suppobox', 'shiotob', 'cryptolocker', 'symmi', 'corebot', 'emotet', 'banjori', 'dnschanger',
+                  'sphinx', 'tinynuke', 'chinad', 'padcrypt', 'tofsee', 'torpig', 'vawtrak', 'sisron',
+                  'virut', 'bamital', 'tsifiri', 'tinba', 'simda', 'ramdo', 'gameover', 'qadars',
+                  'dyre'] + ['murofet', 'necurs', 'conficker', 'rovnix', 'gameoverp2p',
+                             'pushdo', 'matsnu', 'xxhex']
+    drop_col = low_score + lgb_test_1
+    a = res[~(res['family'].isin(drop_col))]
+    # print(res[res['family'].isin(a.tolist())]['family', 'total', 'hit'])
+    # print(a.tolist())
+    # print(len(a))
+    print(a.sort_values(by='total'))
+
+    res2 = pd.read_csv('/home/lxf/data/DGA/training_results/mul_xgb_78_res.csv')
+    print(res2[res2['hit_ratio'] > 0.9]['family'].tolist())
+
+
+def test2():
+    lines_count = {'feodo': 192, 'randomloader': 5, 'symmi': 257816, 'volatile': 996, 'shifu': 2554, 'bebloh': 126527,
+                   'oderoor': 1027, 'pykspa': 1440522, 'hesperbot': 192, 'proslikefan': 201131, 'matsnu': 116715,
+                   'fobber': 200000, 'corebot': 246810, 'cryptowall': 94, 'pushdo': 203519, 'emotet': 321032,
+                   'ekforward': 1460, 'ranbyus_v1': 15920, 'banjori': 439420, 'murofetweekly': 611920, 'rovnix': 437863,
+                   'ccleaner': 11, 'dnschanger': 1599513, 'sphinx': 41621, 'tempedreve': 255, 'geodo': 384,
+                   'beebone': 210, 'dnsbenchmark': 5, 'modpack': 52, 'pykspa_v2': 134648, 'bedep': 23180,
+                   'tinynuke': 10176, 'chinad': 390080, 'padcrypt': 148800, 'tofsee': 920, 'szribi': 16007,
+                   'vidro': 4900, 'torpig': 42120, 'sutra': 9882, 'vawtrak': 266982, 'gspy': 100, 'pandabanker': 9078,
+                   'sisron': 10360, 'murofet': 7365890, 'virut': 5000000, 'xxhex': 4400, 'bamital': 133162,
+                   'xshellghost': 11, 'omexo': 40, 'tsifiri': 59, 'darkshell': 49, 'tinba': 213607, 'mirai': 238,
+                   'simda': 132233, 'gameoverp2p': 418000, 'ramnit': 132319, 'pizd': 2353, 'madmax': 181,
+                   'ramdo': 104000,
+                   'dircrypt': 57845, 'blackhole': 732, 'kraken': 133533, 'nymaim': 448743, 'gozi': 235786,
+                   'ranbyus': 785648, 'unknownjs': 9630, 'redyms': 34, 'gameover': 5000000, 'qadars': 222088,
+                   'dyre': 1381889,
+                   'shiotob': 8003, 'bigviktor': 999, 'enviserv': 1306928, 'qakbot': 3170167, 'conficker': 1789506,
+                   'necurs': 5992235, 'cryptolocker': 1786999, 'locky': 412003, 'suppobox': 130294}
+    res = [x if x <200000 else 200000 for x in lines_count.values()]
+    print(sum(res)/2440000)
+
+
+
 if __name__ == '__main__':
-    test()
+    res_compare()
 

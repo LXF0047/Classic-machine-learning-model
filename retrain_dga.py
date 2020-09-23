@@ -26,7 +26,7 @@ def train_handel(data):
 
 
 # 加载数据集
-def load_bin_data(topn=100000, return_all=False):
+def load_bin_data(topn=None, return_all=False):
     dga_bin = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/new_feature/dga_bin.csv'
     legit = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/new_feature/legit.csv'
     black = pd.read_csv(dga_bin)
