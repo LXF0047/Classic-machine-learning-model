@@ -506,8 +506,8 @@ def new2vectors():
         print('%s保存成功，数量：%s' % (name, tmp.shape[0]))
 
 
-def verification(clf, zrz=False, c=None):
-    model_csv_name = 'mul_lgb_test1'
+def verification(clf, zrz=False, c=None, model_csv_name=None):
+    # model_csv_name = 'mul_lgb_test1'
     # 邹哥模型用到的家族
     file_path = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/csv_keras_new/'
     file_names = os.listdir(file_path)
@@ -698,7 +698,7 @@ def xgb_mul_getbest():
         use = base + [i] + chosed
         family_id = [family_label[x] for x in use]
         xgb_mul_train(c=family_id)
-        save_df = verification('mul', zrz=False, c=use)
+        save_df = verification('mul', zrz=False, c=use, model_csv_name='mul_xgb_test1')
         try:
             pd_res = pd.read_csv('/home/lxf/data/DGA/training_results/mul_xgb_test1_res.csv')['hit_ratio']
             check = sum(1 if x < 0.8 else 0 for x in pd_res.tolist())
