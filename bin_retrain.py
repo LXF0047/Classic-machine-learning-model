@@ -701,8 +701,8 @@ def xgb_mul_getbest():
         family_id = [family_label[x] for x in use]
         xgb_mul_train(c=family_id)
         save_df = verification('mul', zrz=False, c=use, model_csv_name='mul_xgb_test1')
-        if save_df[save_df['family'] == i]['hit_ratio'] < 0.8:  # 如果新加入的家族的结果小于0.8, 继续下一个家族
-            low_acc_family[i] = save_df[save_df['family'] == i]['hit_ratio']
+        if save_df[save_df['family'] == i]['hit_ratio'].values[0] < 0.8:  # 如果新加入的家族的结果小于0.8, 继续下一个家族
+            low_acc_family[i] = save_df[save_df['family'] == i]['hit_ratio'].values[0]
         elif sum(1 if x < 0.8 else 0 for x in save_df['hit_ratio'].tolist()) == 0:  # 如果新加入的家族对其他家族影响不大
             save_df.to_csv('/home/lxf/data/DGA/training_results/mul_xgb_test1_res.csv', index=False)
             chosed.append(i)
