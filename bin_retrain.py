@@ -689,34 +689,31 @@ def lgb_mul_getbest():
 def xgb_mul_getbest():
     base = ['suppobox', 'corebot', 'emotet', 'banjori', 'tinynuke', 'chinad', 'padcrypt', 'torpig', 'pandabanker',
             'sisron', 'bamital', 'simda', 'ramdo', 'gameover', 'dyre']
-    chosed = []
-    add = []
+    chosed = []  # 新增没有影响的且效果大于0.8的家族
+    add = []  # 依次添加的家族名，是所有名字中除去base的
+    low_acc_family = dict()
     for i in lines_count.keys():
         if i not in base:
             add.append(i)
+    # 依次添加一个家族
     for i in add:
         use = base + [i] + chosed
         family_id = [family_label[x] for x in use]
         xgb_mul_train(c=family_id)
         save_df = verification('mul', zrz=False, c=use, model_csv_name='mul_xgb_test1')
-        try:
-            pd_res = pd.read_csv('/home/lxf/data/DGA/training_results/mul_xgb_test1_res.csv')['hit_ratio']
-            check = sum(1 if x < 0.8 else 0 for x in pd_res.tolist())
-            if check == 0:
-                save_df.to_csv('/home/lxf/data/DGA/training_results/mul_xgb_test1_res.csv', index=False)
-                chosed.append(i)
-            else:
-                continue
-        except:
+        if save_df[save_df['family'] == i]['hit_ratio'] < 0.8:  # 如果新加入的家族的结果小于0.8, 继续下一个家族
+            low_acc_family[i] = save_df[save_df['family'] == i]['hit_ratio']
+        elif sum(1 if x < 0.8 else 0 for x in save_df['hit_ratio'].tolist()) == 0:  # 如果新加入的家族对其他家族影响不大
             save_df.to_csv('/home/lxf/data/DGA/training_results/mul_xgb_test1_res.csv', index=False)
+            chosed.append(i)
+        else:
+            continue
+    print('用到的家族：')
     print(base)
     print(chosed)
-
-
-
-
-
-
+    print('效果不好的家族准确率：')
+    print(low_acc_family)
+    print('家族数量', len(base+chosed))
 
 
 def similarity_compare():
