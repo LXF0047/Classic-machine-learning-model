@@ -283,9 +283,12 @@ def xgb_mul_model(X_t, X_v, y_t, y_v, c='train', n_tree=100):
     num_rounds = n_tree  # 迭代次数
     if c == 'train':
         watchlist = [(xgb_train, 'train'), (xgb_val, 'val')]
-        model = xgb.train(plst, xgb_train, num_rounds, watchlist, early_stopping_rounds=50)
-        print(model.get_fscore())
-        # xgb.plot_importance(model)
+        tmp = time.time()
+        model = xgb.train(plst, xgb_train, num_rounds, watchlist)  #, early_stopping_rounds=50
+        multigpu_time = time.time() - tmp
+        h, m, s = second2hms(multigpu_time)
+        print("Single GPU Training Time: %s h %s m %s s" % (h, m, s))
+        # print(model.get_fscore())
         return model
     elif c == 'cv':
         cv_res = xgb.cv(plst, xgb_train, num_rounds, nfold=5, early_stopping_rounds=50,
@@ -317,14 +320,20 @@ def load_higgs_for_dask(client, X_t, X_v, y_t, y_v):
 
 
 # xgb多GPU并行做多分类预测
-def xgb_mul_gpu_train():
+def xgb_mul_gpu_train(X_t, X_v, y_t, y_v):
+    '''
+    :param X_t: train
+    :param X_v: test
+    :param y_t: train label
+    :param y_v: test label
+    :return: fitted model
+    '''
     # https://xgboost.readthedocs.io/en/latest/gpu/index.html  xgb官方文档
     # https://examples.dask.org/machine-learning/xgboost.html  dask官方文档
     # https://towardsdatascience.com/lightning-fast-xgboost-on-multiple-gpus-32710815c7c3  案例
     # https://gist.github.com/MLWhiz/44d39ab3a01fe4e57c974133276705f9  数据集并行处理方式
     # pip install fsspec>=0.3.3
-    print('pandas加载数据集')
-    X_t, X_v, y_t, y_v = load_new_data(clf='mul')
+
     n_family = len(set(y_t.tolist()))
 
     with LocalCUDACluster(n_workers=8) as cluster:
@@ -333,15 +342,16 @@ def xgb_mul_gpu_train():
             ddtrain, ddtest = load_higgs_for_dask(client, X_t, X_v, y_t, y_v)
             param = {'objective': 'multi:softmax',
                      'eta': 0.3,
-                    'num_class': n_family,
-                    'eval_metric': 'mlogloss',
-                    'verbosity': 2,
-                    'tree_method': 'gpu_hist',
+                     'subsample': '0.7',
+                     'num_class': n_family,
+                     'eval_metric': 'mlogloss',
+                     'verbosity': 2,
+                     'tree_method': 'gpu_hist',
                      }
             # 'nthread': -1
             print("多GPU训练开始 ...")
             tmp = time.time()
-            output = xgb.dask.train(client, param, ddtrain, num_boost_round=100, evals=[(ddtest, 'test')])
+            output = xgb.dask.train(client, param, ddtrain, num_boost_round=1000, evals=[(ddtest, 'test')])
             multigpu_time = time.time() - tmp
             print('训练完成')
             bst = output['booster']
@@ -902,6 +912,9 @@ def get_txt():
 def sometest():
     # 随便测点啥
     pass
+    X_t, X_v, y_t, y_v = load_zrz_data(clf='mul')
+    xgb_mul_model(X_t, X_v, y_t, y_v, c='train', n_tree=1000)
+    xgb_mul_gpu_train(X_t, X_v, y_t, y_v)
 
 
 if __name__ == '__main__':
@@ -911,5 +924,5 @@ if __name__ == '__main__':
     # lgb_mul_train(c=family_id)
     # verification('mul', zrz=False, c=col)
     # performance(min_features=True)
-    main()
+    sometest()
     # xgb_mul_gpu_train()
