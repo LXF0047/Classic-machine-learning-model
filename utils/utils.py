@@ -42,3 +42,21 @@ def draw_from_dict(dicdata, RANGE=None, axis=0):
         return
     else:
         return "Axis got wrong value!"
+
+
+# 检查字符转中是否有特殊字符
+def isEnglish(s):
+    try:
+        s.encode(encoding='utf-8').decode('ascii')
+    except UnicodeDecodeError:
+        return False
+    else:
+        return True
+
+
+def second2hms(dur):
+    '''
+    :param dur: 程序运行秒数
+    :return: 时分秒
+    '''
+    return int(dur//3600), int((dur % 3600)//60), int(dur % 60)

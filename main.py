@@ -1,12 +1,14 @@
 # 用于其他在10服务器上的验证
 import os
 from tqdm import tqdm
+# from utils.utils import isEnglish
 import Levenshtein
 
 
 def test():
     path = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/demo/data/families/'
-    file_names = os.listdir(path)
+    # file_names = os.listdir(path)
+    file_names = ['matsnu', 'suppobox', 'gozi']
 
     top1w = dict()
 
@@ -21,7 +23,7 @@ def test():
             white_d[i.strip()] = 0
 
     print('读取白名单完成')
-    hard2detect_path = '/data1/lxf/DGA/hard2detect.txt'
+    hard2detect_path = '/data1/lxf/DGA/hard2detect_words.txt'
     for file in file_names:
         with open(path + file, 'r') as r:
             for i in tqdm(r):
@@ -37,6 +39,98 @@ def test():
                             if flag:
                                 break
             print('文件:%s处理完成' % file)
+
+
+def test3():
+    # 找容易误报的白样本
+    long = []
+    short = []
+    top1w = dict()
+    with open('/data0/new_workspace/mlxtend_dga_bin_20190307/merge/demo/data/top1w.txt', 'r', encoding='latin1') as r:
+        for i in r:
+            top1w[i.split(',')[0]] = 0
+    print('读取top1w完成')
+    for line in top1w.keys():
+        if len(line.split('.')[0]) > 15 and isEnglish(line.split('.')[0]):
+            long.append(line)
+        elif len(line.split('.')[0]) <= 15 and isEnglish(line.split('.')[0]):
+            short.append(line)
+        else:
+            continue
+
+    with open('/data1/lxf/DGA/white_long.txt', 'w') as long_file:
+        for i in long:
+            long_file.write(i + '\n')
+
+    with open('/data1/lxf/DGA/white_short.txt', 'w') as short_file:
+        for i in short:
+            short_file.write(i + '\n')
+
+
+# 生成dga对抗样本用
+def new_dga_sample(company, hard=True):
+    # 生成dga对抗数据用
+    # 基于新选取的黑白域名
+    import random
+    path = '/data1/lxf/DGA/'
+    black1 = []  # 其他类型dga  都用  2949
+    black2 = []  # 单词类型dga  取部分用
+    black3 = []  # 容易检出的dga  差多少到5w用多少
+    white1 = []  # 长的白域名  16876
+    white2 = []  # 短的白域名
+    with open(path + 'hard2detect.txt', 'r') as hard1:
+        for i in hard1:
+            black1.append(i.split(',')[0] + '\n')
+    with open(path + 'hard2detect_words.txt', 'r') as hard2:
+        for i in hard2:
+            black2.append(i.split(',')[0] + '\n')
+    with open(path + 'easy2detect.txt', 'r') as easy:
+        for i in easy:
+            black3.append(i)
+    with open(path + 'white_long.txt', 'r') as long:
+        for i in long:
+            white1.append(i)
+    with open(path + 'white_short.txt', 'r') as short:
+        for i in short:
+            white2.append(i)
+
+    if hard:
+        _black = []
+        for i in range(37051):
+            _black.append(random.choice(black2))
+        for i in range(10000):
+            _black.append(random.choice(black3))
+        _white = []
+        for i in range(33124):
+            _white.append(random.choice(white2))
+        # res = black1 + _black + white1 + _white
+        black_res = black1 + _black
+        white_res = white1 + _white
+        print(len(black_res + white_res))
+        with open(path + company + '_hard_black.txt', 'w') as w:
+            for i in black_res:
+                w.write(i)
+        with open(path + company + '_hard_white.txt', 'w') as w:
+            for i in white_res:
+                w.write(i)
+    else:
+        _black = []
+        for i in range(1000):
+            _black.append(random.choice(black1))
+            _black.append(random.choice(black2))
+        for i in range(48000):
+            _black.append(random.choice(black3))
+        _white = []
+        for i in range(50000):
+            _white.append(random.choice(white2))
+        print(len(_black + _white))
+        with open(path + company + '_easy_black.txt', 'w') as w:
+            for i in _black:
+                w.write(i)
+        with open(path + company + '_easy_white.txt', 'w') as w:
+            for i in _white:
+                w.write(i)
+    print('保存完成')
 
 
 def handel_white_dga():
@@ -69,9 +163,6 @@ def res_compare():
     # print(len(a))
     print(a.sort_values(by='total'))
 
-    res2 = pd.read_csv('/home/lxf/data/DGA/training_results/mul_xgb_78_res.csv')
-    print(res2[res2['hit_ratio'] > 0.9]['family'].tolist())
-
 
 def test2():
     lines_count = {'feodo': 192, 'randomloader': 5, 'symmi': 257816, 'volatile': 996, 'shifu': 2554, 'bebloh': 126527,
@@ -91,11 +182,46 @@ def test2():
                    'dyre': 1381889,
                    'shiotob': 8003, 'bigviktor': 999, 'enviserv': 1306928, 'qakbot': 3170167, 'conficker': 1789506,
                    'necurs': 5992235, 'cryptolocker': 1786999, 'locky': 412003, 'suppobox': 130294}
-    res = [x if x <200000 else 200000 for x in lines_count.values()]
-    print(sum(res)/2440000)
+    # res = [x if x <200000 else 200000 for x in lines_count.values()]
+    # print(sum(res)/2440000)
+    a = []
+    for i in lines_count:
+        if lines_count[i] > 10000:
+            a.append(i)
+    print(a)
+    print(len(a))
 
+
+def importance_plot():
+    from utils.utils import draw_from_dict
+    a = {'domain_len': 6279, 'domain_seq73': 10022, 'domain_seq72': 9223, '_consecutive_consonant_ratio': 5691, 'domain_seq67': 94589, 'domain_seq70': 96710, '_shannon_entropy': 42463, '_alphabet_size': 7127, 'domain_seq48': 4176, 'domain_seq47': 2787, 'domain_seq46': 2080, 'domain_seq49': 4367, '_contains_digits': 3249, 'domain_seq65': 86783, 'domain_seq51': 5879, 'domain_seq59': 29944, 'domain_seq74': 8458, '_n_grams0': 43467, 'domain_seq53': 6966, 'domain_seq50': 5133, 'domain_seq58': 27426, 'domain_seq60': 44062, 'domain_seq61': 51278, 'domain_seq41': 164, 'domain_seq75': 8398, '_subdomain_lengths_mean': 13695, 'domain_seq71': 90791, 'domain_seq55': 11007, 'domain_seq42': 307, 'domain_seq57': 25398, 'domain_seq69': 97455, 'domain_seq56': 18680, 'domain_seq38': 105, 'domain_seq40': 98, 'domain_seq62': 63069, 'domain_seq63': 70534, 'domain_seq64': 83036, 'domain_seq54': 8257, 'domain_seq43': 454, 'domain_seq66': 95478, 'domain_seq68': 95939, 'domain_seq52': 6775, '_n_grams1': 4684, '_n_grams4': 3050, '_hex_part_ratio': 391, 'domain_seq35': 64, 'domain_seq39': 115, 'domain_seq36': 100}
+    by_value = sorted(a.items(), key=lambda item: item[1], reverse=False)
+    low = []
+    for i in a:
+        if a[i] < 1000:
+            low.append(i)
+    # print(by_value)
+    rank_list = [x[0] for x in by_value]
+    print(rank_list)
+    print(len(a.keys()), len(low))
+    # draw_from_dict(a)
+
+
+def check_intel_domain():
+    # 检查情报中是否有白样本
+    intel = dict()
+    with open('/home/lxf/data/intel/domain.list', 'r') as r:
+        for line in r:
+            intel[line.split(',')[0]] = 0
+    with open('/data0/new_workspace/mlxtend_dga_bin_20190307/merge/demo/data/top1w.txt', 'r', encoding='latin1') as r:
+        for i in r:
+            if i.split(',')[0] in intel:
+                print(i.split(',')[0])
 
 
 if __name__ == '__main__':
-    res_compare()
-
+    # res_compare()
+    # test2()
+    # importance_plot()
+    # new_dga_sample('B', hard=False)
+    check_intel_domain()

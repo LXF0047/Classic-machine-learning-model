@@ -17,6 +17,8 @@ from sklearn.model_selection import GridSearchCV
 from xgboost.sklearn import XGBClassifier
 import xgboost as xgb
 import lightgbm as lgb
+import joblib
+from utils.utils import second2hms
 import psutil
 
 
@@ -48,7 +50,7 @@ family_label = {'feodo': 0, 'randomloader': 1, 'symmi': 2, 'volatile': 3, 'shifu
                     'ramdo': 58, 'dircrypt': 59, 'blackhole': 60, 'kraken': 61, 'nymaim': 62, 'gozi': 63, 'ranbyus': 64,
                     'unknownjs': 65, 'redyms': 66, 'gameover': 67, 'qadars': 68, 'dyre': 69, 'shiotob': 70, 'bigviktor': 71,
                     'enviserv': 72, 'qakbot': 73, 'conficker': 74, 'necurs': 75, 'cryptolocker': 76, 'locky': 77,
-                    'suppobox': 78}
+                    'suppobox': 78, 'others': 999}
 # 邹哥采样的多分类数据样本家族对应关系
 zrz_family_label = {'virut': 0, 'gameover': 1, 'murofet': 2, 'dnschanger': 3, 'dyre': 4, 'ranbyus': 5,
                     'murofetweekly': 6, 'banjori': 7, 'rovnix': 8, 'gameoverp2p': 9, 'chinad': 10, 'emotet': 11,
@@ -58,6 +60,19 @@ zrz_family_label = {'virut': 0, 'gameover': 1, 'murofet': 2, 'dnschanger': 3, 'd
                     'sisron': 32, 'tinynuke': 33, 'sutra': 34, 'pandabanker': 35, 'vidro': 36, 'xxhex': 37, 'shifu': 38,
                     'pizd': 39, 'ekforward': 40, 'oderoor': 41, 'volatile': 42, 'blackhole': 43, 'geodo': 44,
                     'tempedreve': 45, 'mirai': 46}
+# 去掉的特征
+# c_drop = ['domain_seq35', 'domain_seq40', 'domain_seq36', 'domain_seq38', 'domain_seq39', 'domain_seq41',
+#            'domain_seq42', '_hex_part_ratio', 'domain_seq43', 'domain_seq46', 'domain_seq47', '_n_grams4',
+#            '_contains_digits', 'domain_seq48', 'domain_seq49', '_n_grams1', 'domain_seq50',
+#            '_consecutive_consonant_ratio', 'domain_seq51', 'domain_len', 'domain_seq52', 'domain_seq53',
+#            '_alphabet_size', 'domain_seq54', 'domain_seq75', 'domain_seq74', 'domain_seq72', 'domain_seq73',
+#            'domain_seq55', '_subdomain_lengths_mean', 'domain_seq56', 'domain_seq57', 'domain_seq58',
+#            'domain_seq59', '_shannon_entropy', '_n_grams0', 'domain_seq60', 'domain_seq61', 'domain_seq62',
+#            'domain_seq63', 'domain_seq64', 'domain_seq65', 'domain_seq71', 'domain_seq67', 'domain_seq66',
+#            'domain_seq68', 'domain_seq70', 'domain_seq69']
+c_drop = ['domain_len', 'domain_seq73', 'domain_seq72', '_consecutive_consonant_ratio', 'domain_seq67', 'domain_seq66', '_alphabet_size', 'domain_seq48', 'domain_seq47', 'domain_seq46', 'domain_seq49', '_contains_digits', 'domain_seq65', 'domain_seq51', 'domain_seq59', 'domain_seq74', 'domain_seq56', 'domain_seq52', 'domain_seq53', 'domain_seq58', 'domain_seq60', 'domain_seq61', 'domain_seq40', 'domain_seq55', 'domain_seq75', '_subdomain_lengths_mean', 'domain_seq71', '_shannon_entropy', 'domain_seq70', 'domain_seq42', 'domain_seq63', 'domain_seq57', 'domain_seq69', 'domain_seq38', 'domain_seq64', 'domain_seq41', 'domain_seq62', 'domain_seq54', 'domain_seq43', 'domain_seq68', '_n_grams0', 'domain_seq50', '_n_grams1', '_hex_part_ratio', '_n_grams4', 'domain_seq36', 'domain_seq39', 'domain_seq35']
+
+c_20000 = c_drop[15:]
 
 
 def sampling_data(sampling=True, clf='bin', top=100000):
@@ -117,7 +132,7 @@ def sampling_data(sampling=True, clf='bin', top=100000):
 def generate_new_data():
     '''
     保存新采样数据
-    :return:
+    :return: Null
     '''
     new_bin_data = sampling_data(sampling=True, clf='bin')
     new_bin_data.to_csv('/data1/lxf/DGA/data/bin_78_10w.csv', index=False)
@@ -141,6 +156,8 @@ def load_new_data(clf='bin', cols=None):
         if cols is not None:
             new_id = [x for x in range(len(cols))]
             new_dict = dict(zip(cols, new_id))
+            # 打印label和家族名称的对应顺序
+            print(new_dict)
             mul_data = pd.read_csv('/data1/lxf/DGA/data/mul_78_10w.csv')
             mul_data = mul_data[mul_data['family'].isin(cols)]
             mul_data['family'] = mul_data['family'].apply(lambda x: new_dict[x])
@@ -154,7 +171,13 @@ def load_new_data(clf='bin', cols=None):
         return features, label
 
 
-def load_zrz_data(clf='bin'):
+def load_zrz_data(clf='bin', min_features=False, int_type=False):
+    '''
+    :param clf: bin or mul
+    :param min_features: 是否减少特征，减少特征的list为全局变量
+    :param int_type: 是否将训练数据转化为int类型
+    :return: 划分好的训练集和验证集
+    '''
     if clf == 'mul':
         zrz_mul = '/data0/new_workspace/mlxtend_dga_multi_20190316/merge/new_feature/dga_multi.csv'
         mul_data = pd.read_csv(zrz_mul)
@@ -169,7 +192,11 @@ def load_zrz_data(clf='bin'):
                 'domain_seq74', 'domain_seq75']
         mul_data.columns = cols
         mul_data['type'] = mul_data['type'].astype('int') - 1
-        print('数据集读取完成')
+        if min_features:
+            mul_data.drop(c_20000, axis=1, inplace=True)
+        if int_type:
+            mul_data.astype('int')
+        print('数据集读取完成, 特征数量：%s行， %s列' % (mul_data.shape[0], mul_data.shape[1]))
         return train_data_split(mul_data, label_name='type')
     else:
         dga_bin = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/new_feature/dga_bin.csv'
@@ -216,22 +243,22 @@ def lgb_mul_model(X_t, X_v, y_t, y_v, c='train'):
         'objective': 'multiclass',
         'num_class': n_family,
         'metric': 'multi_logloss',
-        'num_threads': 28
+        'nthread': 56
         # 'device': 'gpu',
         # 'gpu_platform_id': 1,
         # 'gpu_device_id': 1,
     }
     if c == 'train':
         gbm = lgb.train(lgb_params, lgb_train, num_boost_round=5000, valid_sets=lgb_eval,
-                        early_stopping_rounds=100)
+                        early_stopping_rounds=50)
         return gbm
     else:
-        n_est = lgb.cv(lgb_params, lgb_train, num_boost_round=5000, nfold=5, early_stopping_rounds=200, seed=2020,
+        n_est = lgb.cv(lgb_params, lgb_train, num_boost_round=2000, nfold=5, early_stopping_rounds=50, seed=2020,
                        verbose_eval=2)
-        return n_est.shape[0]
+        return n_est
 
 
-def xgb_mul_model(X_t, X_v, y_t, y_v, c='train'):
+def xgb_mul_model(X_t, X_v, y_t, y_v, c='train', n_tree=100):
     # print('===XGB多分类模型【训练集】各家族样本数量===')
     # print(y_t.value_counts())
     # print('=====================================')
@@ -242,58 +269,86 @@ def xgb_mul_model(X_t, X_v, y_t, y_v, c='train'):
     xgb_train = xgb.DMatrix(X_t, label=y_t)
     n_family = len(set(y_t.tolist()))
     xgb_params = {
+        'eta': 0.3,
+        'subsample': '0.7',
         'booster': 'gbtree',
         'objective': 'multi:softmax',
         'num_class': n_family,
         'eval_metric': 'mlogloss',
         'verbosity': 2,
         'tree_method': 'gpu_hist',
-        'gpu_id': 1
+        'gpu_id': 0
     }
     plst = list(xgb_params.items())
-    num_rounds = 5000  # 迭代次数
+    num_rounds = n_tree  # 迭代次数
     if c == 'train':
         watchlist = [(xgb_train, 'train'), (xgb_val, 'val')]
-        model = xgb.train(plst, xgb_train, num_rounds, watchlist, early_stopping_rounds=100)
+        model = xgb.train(plst, xgb_train, num_rounds, watchlist, early_stopping_rounds=50)
+        print(model.get_fscore())
+        # xgb.plot_importance(model)
         return model
     elif c == 'cv':
-        cv_res = xgb.cv(plst, xgb_train, num_rounds, nfold=5, early_stopping_rounds=100,
+        cv_res = xgb.cv(plst, xgb_train, num_rounds, nfold=5, early_stopping_rounds=50,
                         maximize=True, seed=2020, verbose_eval=2)
         return cv_res.shape[0]
 
 
-def xgb_mul_model_gpu(client, x, y):
-    # 使用多个GPU,报错ImportError: Dask needs to be installed in order to use this module
-    # 没整明白。。
-    # 参考https://xgboost.readthedocs.io/en/latest/gpu/index.html
-    n_family = len(set(y.tolist()))
-    dtrain = DaskDMatrix(client, x, y)
-    output = xgb.dask.train(client,
-                            {'verbosity': 2,
-                             'booster': 'gbtree',
-                             'objective': 'multi:softmax',
-                             'num_class': n_family,
-                             'eval_metric': 'mlogloss',
-                             # Golden line for GPU training
-                             'tree_method': 'gpu_hist'},
-                            dtrain,
-                            num_boost_round=5000, evals=[(dtrain, 'train')])
-    bst = output['booster']
-    history = output['history']
+# xgb多gpu训练准备并行训练数据
+def load_higgs_for_dask(client, X_t, X_v, y_t, y_v):
+    '''
+    :param client: gpu设备
+    :param X_t: 训练集
+    :param X_v: 验证集
+    :param y_t: 训练集标签
+    :param y_v: 验证集标签
+    :return: dask.datafram格式的数据
+    '''
+    import dask.dataframe as dd
+    # 1. Create a Dask Dataframe from Pandas Dataframe.
+    ddf_higgs_train = dd.from_pandas(X_t, npartitions=8)
+    ddf_higgs_test = dd.from_pandas(X_v, npartitions=8)
+    ddf_y_train = dd.from_pandas(y_t, npartitions=8)
+    ddf_y_test = dd.from_pandas(y_v, npartitions=8)
+    # 2. Create Dask DMatrix Object using dask dataframes
+    ddtrain = DaskDMatrix(client, ddf_higgs_train, ddf_y_train)
+    ddtest = DaskDMatrix(client, ddf_higgs_test, ddf_y_test)
 
-    # you can pass output directly into `predict` too.
-    prediction = xgb.dask.predict(client, bst, dtrain)
-    prediction = prediction.compute()
-    print('Evaluation history:', history)
-    return prediction
+    return ddtrain, ddtest
 
 
+# xgb多GPU并行做多分类预测
 def xgb_mul_gpu_train():
-    # 多CPU并行训练，没弄明白
+    # https://xgboost.readthedocs.io/en/latest/gpu/index.html  xgb官方文档
+    # https://examples.dask.org/machine-learning/xgboost.html  dask官方文档
+    # https://towardsdatascience.com/lightning-fast-xgboost-on-multiple-gpus-32710815c7c3  案例
+    # https://gist.github.com/MLWhiz/44d39ab3a01fe4e57c974133276705f9  数据集并行处理方式
+    # pip install fsspec>=0.3.3
+    print('pandas加载数据集')
     X_t, X_v, y_t, y_v = load_new_data(clf='mul')
-    with LocalCUDACluster(n_workers=8, threads_per_worker=4) as cluster:
+    n_family = len(set(y_t.tolist()))
+
+    with LocalCUDACluster(n_workers=8) as cluster:
         with Client(cluster) as client:
-            xgb_mul_model_gpu(client, X_t, y_t)
+            print('数据集并行化处理')
+            ddtrain, ddtest = load_higgs_for_dask(client, X_t, X_v, y_t, y_v)
+            param = {'objective': 'multi:softmax',
+                     'eta': 0.3,
+                    'num_class': n_family,
+                    'eval_metric': 'mlogloss',
+                    'verbosity': 2,
+                    'tree_method': 'gpu_hist',
+                     }
+            # 'nthread': -1
+            print("多GPU训练开始 ...")
+            tmp = time.time()
+            output = xgb.dask.train(client, param, ddtrain, num_boost_round=100, evals=[(ddtest, 'test')])
+            multigpu_time = time.time() - tmp
+            print('训练完成')
+            bst = output['booster']
+            multigpu_res = output['history']
+            h, m, s = second2hms(multigpu_time)
+            print("Multi GPU Training Time: %s h %s m %s s" % (h, m, s))
+    return bst
 
 
 def xgb_bin_train():
@@ -410,28 +465,33 @@ def lgb_mul_gridsearch():
     # 使用邹哥采样的训练数据
     X_t, X_v, y_t, y_v = load_zrz_data(clf='mul')
     print('开始寻找最佳n_estimators')
-    n_es = lgb_mul_model(X_t, X_v, y_t, y_v)
-    print(n_es)
+    # n_es = lgb_mul_model(X_t, X_v, y_t, y_v, c='cv')
+    n_es = 19
 
-    # param_test1 = {
-    #     'max_depth': range(3, 8, 2),
-    #     'min_child_weight': range(2, 6, 2)
-    # }
-    # gsearch1 = GridSearchCV(estimator=XGBClassifier(learning_rate=0.1, n_estimators=n_es, max_depth=6,
-    #                                                 min_child_weight=1, gamma=0, subsample=0.8, colsample_bytree=0.8,
-    #                                                 objective='binary:logistic', nthread=-1, scale_pos_weight=1,
-    #                                                 seed=2020),
-    #                         param_grid=param_test1, scoring='roc_auc', n_jobs=-1, cv=10, verbose=2)
-    # gsearch1.fit(X_t, y_t)
-    # print('n_estimators = %s\nmax_depth = %s\nmin_child_weight = %s\nbest_score_ = %s' % (n_es,
-    #                                                                                       gsearch1.best_params_[
-    #                                                                                           'max_depth'],
-    #                                                                                       gsearch1.best_params_[
-    #                                                                                           'min_child_weight'],
-    #                                                                                       gsearch1.best_score_))
+    parameters = {
+        'max_depth': [10, 15, 20, 25],
+        'learning_rate': [0.1, 0.15, 0.2],
+        'feature_fraction': [0.6, 0.7, 0.8, 0.9, 0.95],
+        'bagging_fraction': [0.6, 0.7, 0.8, 0.9, 0.95],
+        'bagging_freq': [2, 4, 5, 6, 8],
+        'lambda_l1': [0, 0.1, 0.4, 0.5, 0.6],
+        'lambda_l2': [0, 10, 15, 35, 40],
+    }
+
+    gbm = lgb.LGBMClassifier(objective='multiclass',
+                             metric='multi_logloss',
+                             learning_rate=0.1,
+                             num_iterations=n_es,
+                             n_jobs=32,
+                             )
+    gsearch = GridSearchCV(gbm, param_grid=parameters, cv=5, n_jobs=32, verbose=2)
+    gsearch.fit(X_t, y_t)
+    print('参数的最佳取值:{0}'.format(gsearch.best_params_))
+    print('最佳模型得分:{0}'.format(gsearch.best_score_))
 
 
 def get_new_family():
+    # 将360中的新家族写入到文件
     shiotob = []
     bigviktor = []
     enviserv = []
@@ -506,7 +566,16 @@ def new2vectors():
         print('%s保存成功，数量：%s' % (name, tmp.shape[0]))
 
 
-def verification(clf, zrz=False, c=None, model_csv_name=None):
+def verification(clf, zrz=False, c=None, model_csv_name=None, min_features=False, int_type=False):
+    '''
+    :param clf: mul or bin
+    :param zrz: 是否采用现有采样数据
+    :param c: 采用的家族，在zrz=False时有效
+    :param model_csv_name: 加载模型和保存预测结果的名字，e.g. model_csv_name=test  >>>  test.model test.csv
+    :param min_features: 是否减少特征，减少的特征为一全局list  （尝试提高训练速度）
+    :param int_type: 是否将训练数据转为int类型  （尝试提高训练速度）
+    :return: 测试结果的csv包括：家族名称，总数量，未命中数量，准确率，预测速度
+    '''
     # model_csv_name = 'mul_lgb_test1'
     # 邹哥模型用到的家族
     file_path = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/csv_keras_new/'
@@ -526,8 +595,7 @@ def verification(clf, zrz=False, c=None, model_csv_name=None):
     elif 'lgb' in model_csv_name:
         model = lgb.Booster(model_file='%s.model' % model_csv_name)
     else:
-        print('Wrong name')
-        return 0
+        model = joblib.load('%s.pkl' % model_csv_name)
 
     # 进行预测
     if clf == 'mul':
@@ -536,10 +604,10 @@ def verification(clf, zrz=False, c=None, model_csv_name=None):
         total_sample = 0  # 预测样本总条数
 
         # 写入结果csv中内容
-        res_df = {'family': [], 'unhit': [], 'total': [], 'hit_ratio': []}
+        res_df = {'family': [], 'unhit': [], 'total': [], 'hit_ratio': [], 'speed': []}
         print('开始预测')
         if c is not None:
-            _filenames = c
+            _filenames = c  # + ['others']
         else:
             _filenames = new_file_names + file_names
         for name in _filenames:
@@ -551,25 +619,31 @@ def verification(clf, zrz=False, c=None, model_csv_name=None):
                            'unknownjs', 'redyms']
                 if name not in new_file_names + notused:
                     tmp = pd.read_csv(file_path + name)
+                    if min_features:
+                        tmp.drop(c_20000, axis=1, inplace=True)
+                    if int_type:
+                        tmp.astype('int')
                 else:
                     continue
             else:
                 if name in new_file_names:
                     tmp = pd.read_csv(new_file_path + name)
                     tmp.drop(['family'], axis=1, inplace=True)
+                # elif name == 'others':
+                #     tmp = pd.read_csv('/data1/lxf/DGA/data/mul_78_10w.csv')
+                #     tmp.drop(['family'], axis=1, inplace=True)
+                #     tmp = tmp.sample(n=100000, axis=0)
                 else:
                     tmp = pd.read_csv(file_path + name)
 
             pre_start = time.time()  # 开始预测时间
-
             if 'xgb' in model_csv_name:
                 res = model.predict(xgb.DMatrix(tmp))  # XGB预测结果
             elif 'lgb' in model_csv_name:
                 lgb_res = model.predict(tmp)
                 res = [list(x).index(max(x)) for x in lgb_res]  # LGB预测结果
             else:
-                print('Wrong File Name!')
-                return 0
+                res = model.predict(tmp)
 
             pre_end = time.time()  # 结束预测时间
             pre_time = pre_end - pre_start  # 预测用时
@@ -588,7 +662,7 @@ def verification(clf, zrz=False, c=None, model_csv_name=None):
                 else:
                     false_count = len([x for x in res if x != family_label[name]])
 
-            print('家族：%s, 误报个数：%s, 正确率：%s' % (name, false_count, round(1 - false_count/tmp.shape[0], 4)))
+            print('家族：%s, 误报个数：%s, 正确率：%s, 速率： %s ms/条' % (name, false_count, round(1 - false_count/tmp.shape[0], 4), round(pre_time*1000/tmp.shape[0], 5)))
             # print('PID: %s , Used Memory: %s MB' % (pid, psutil.Process(pid).memory_info().rss / 1024 / 1024))
 
             # 存入结果csv
@@ -596,6 +670,7 @@ def verification(clf, zrz=False, c=None, model_csv_name=None):
             res_df['unhit'].append(false_count)
             res_df['total'].append(tmp.shape[0])
             res_df['hit_ratio'].append(round(1 - false_count/tmp.shape[0], 4))
+            res_df['speed'].append(round(pre_time*1000/tmp.shape[0], 5))
 
         df2save = pd.DataFrame(res_df)
         # df2save.to_csv('/home/lxf/data/DGA/training_results/%s_res.csv' % model_csv_name, index=False)
@@ -603,59 +678,66 @@ def verification(clf, zrz=False, c=None, model_csv_name=None):
         return df2save
 
 
-def performance():
-    rounds = 1000
-
-    test_data = pd.read_csv('/data0/new_workspace/mlxtend_dga_bin_20190307/merge/csv_keras_new/sutra')
+def performance(min_features=False):
+    rounds = 100
+    if min_features:
+        test_data = pd.read_csv('/data0/new_workspace/mlxtend_dga_bin_20190307/merge/csv_keras_new/sutra')
+        test_data.drop(c_20000, axis=1, inplace=True)
+    else:
+        test_data = pd.read_csv('/data0/new_workspace/mlxtend_dga_bin_20190307/merge/csv_keras_new/sutra')
     total_sample = test_data.shape[0]*rounds
-    # model = xgb.Booster(model_file='mul_xgb_zrz.model')
-    model = lgb.Booster(model_file='mul_lgb_33.model')
+    model = xgb.Booster(model_file='mul_xgb_less_feature.model')
+    # model = lgb.Booster(model_file='mul_lgb_test1.model')
     start_time = time.time()
     print('Started')
     for i in range(rounds):
-        # model.predict(xgb.DMatrix(test_data))
-        model.predict(test_data)
+        model.predict(xgb.DMatrix(test_data))
+        # model.predict(test_data)
     total_time = time.time() - start_time
     print('速率：%s 条/s，%s ms/条' % (round(total_sample/ total_time, 5), round(total_time * 1000 / total_sample, 5)))
 
 
 def main():
-    # xgb_bin_train()
-    # xgb二分类调参, 尝试不同数据量对模型调参结果的影响
-    # xgb_bin_gridsearch()
     start = time.time()
-    # xgb_mul_train()
-    lgb_mul_train()
+    print('XGB 训练开始...')
+    # 多样本的家族
+    base = ['suppobox', 'corebot', 'emotet', 'banjori', 'tinynuke', 'chinad', 'padcrypt', 'torpig', 'pandabanker',
+            'sisron', 'bamital', 'simda', 'ramdo', 'gameover', 'dyre']
+    chosed = ['feodo', 'symmi', 'volatile', 'shifu', 'bebloh', 'oderoor', 'pykspa', 'hesperbot', 'matsnu', 'fobber',
+              'pushdo', 'dnsbenchmark', 'mirai', 'madmax', 'bigviktor', 'proslikefan', 'ekforward', 'ranbyus_v1',
+              'murofetweekly', 'rovnix', 'sphinx', 'beebone', 'modpack', 'bedep', 'tofsee', 'szribi', 'sutra',
+              'vawtrak', 'gspy', 'murofet', 'xxhex', 'omexo', 'tsifiri', 'tinba', 'gozi', 'cryptolocker']
+    # X_t, X_v, y_t, y_v = load_zrz_data(clf='mul')
+    # c = base + chosed
+    # family_id = [family_label[x] for x in c]
+    # X_t, X_v, y_t, y_v = load_new_data(clf='mul', cols=family_id)
+    X_t, X_v, y_t, y_v = load_zrz_data(clf='mul', min_features=True, int_type=True)  # , min_features=True, int_type=True
+
+    name = 'mul_xgb_tree_test'
+
+    # 对比基分类器对预测速度的影响
+    # for i in [50, 100, 150, 200]:
+    #     mul_clf = xgb_mul_model(X_t, X_v, y_t, y_v, c='train', n_tree=i)
+    #     mul_clf.save_model('%s.model' % name)
+    #     end = time.time()
+    #     dur = end-start
+    #     h, m, s = int(dur//3600), int((dur % 3600)//60), int(dur % 60)
+    #     print('训练用时：%s小时%s分%s秒' % (h, m, s))
+    #     re_df = verification(clf='mul', zrz=True, model_csv_name=name)  # , min_features=True, int_type=True
+    #     print('预测结果')
+    #     print(re_df)
+    #     re_df.to_csv('/home/lxf/data/DGA/training_results/xgb/%s.csv' % name+'_'+str(i), index=False)
+
+    mul_clf = xgb_mul_model(X_t, X_v, y_t, y_v, c='train', n_tree=150)
+    mul_clf.save_model('%s.model' % name)
     end = time.time()
     dur = end-start
     h, m, s = int(dur//3600), int((dur % 3600)//60), int(dur % 60)
-    print('用时：%s小时%s分%s秒' % (h, m, s))
-
-
-def check_gpu():
-    import tensorflow as tf
-    print(tf.config.list_physical_devices('GPU'))
-
-
-def test1():
-    # 选取部分列进行训练
-    # lbg_col_43 = ['necurs', 'suppobox', 'shiotob', 'conficker', 'enviserv', 'cryptolocker', 'symmi', 'volatile', 'bebloh',
-    #        'matsnu', 'corebot', 'pushdo', 'emotet', 'banjori', 'murofetweekly', 'rovnix', 'dnschanger', 'sphinx',
-    #        'modpack', 'tinynuke', 'chinad', 'padcrypt', 'tofsee', 'szribi', 'torpig', 'vawtrak', 'gspy', 'pandabanker',
-    #        'sisron', 'murofet', 'virut', 'xxhex', 'bamital', 'omexo', 'tsifiri', 'tinba', 'simda', 'gameoverp2p',
-    #        'ramdo', 'unknownjs', 'gameover', 'qadars', 'dyre']
-    # lgb_col_33 = ['necurs', 'suppobox', 'conficker', 'enviserv', 'cryptolocker', 'symmi', 'bebloh', 'matsnu', 'corebot',
-    #        'pushdo', 'emotet', 'banjori', 'murofetweekly', 'rovnix', 'dnschanger', 'sphinx', 'tinynuke', 'chinad',
-    #        'padcrypt', 'szribi', 'torpig', 'vawtrak', 'sisron', 'murofet', 'virut', 'bamital', 'tinba', 'simda',
-    #        'gameoverp2p', 'ramdo', 'gameover', 'qadars', 'dyre']
-    # xgb_test1为78分类中准确率大于0.9的家族
-    # xgb_test1 = ['suppobox', 'corebot', 'emotet', 'banjori', 'tinynuke', 'chinad', 'padcrypt', 'torpig', 'pandabanker',
-    #              'sisron', 'bamital', 'simda', 'ramdo', 'gameover', 'dyre']
-    xgb_lgb_col_50 = ['dircrypt', 'ramnit', 'enviserv', 'cryptolocker', 'fobber', 'shiotob', 'symmi', 'bedep', 'suppobox', 'locky', 'bebloh', 'murofet', 'pizd', 'qakbot', 'tinba', 'qadars', 'vawtrak', 'dnschanger', 'kraken', 'simda', 'nymaim', 'necurs', 'chinad', 'sisron', 'torpig', 'sutra', 'ranbyus_v1', 'vidro', 'padcrypt', 'oderoor', 'corebot', 'ramdo', 'pykspa_v2', 'pykspa', 'conficker', 'pushdo', 'sphinx', 'ranbyus', 'szribi', 'banjori', 'emotet', 'gozi', 'rovnix', 'proslikefan', 'pandabanker', 'shifu', 'virut', 'unknownjs', 'ekforward', 'xxhex']
-    family_id = [family_label[x] for x in xgb_lgb_col_50]  # 选取列的id号
-    # xgb_mul_train(c=family_id)
-    lgb_mul_train(c=family_id)
-    verification('mul', zrz=False, c=xgb_lgb_col_50)
+    print('训练用时：%s小时%s分%s秒' % (h, m, s))
+    re_df = verification(clf='mul', zrz=True, model_csv_name=name, min_features=True, int_type=True)  # , min_features=True, int_type=True
+    print('预测结果')
+    print(re_df)
+    re_df.to_csv('/home/lxf/data/DGA/training_results/xgb/%s.csv' % name, index=False)
 
 
 def lgb_mul_getbest():
@@ -670,44 +752,81 @@ def lgb_mul_getbest():
     #            nymaim,        误报个数：112287, 正确率：0.7498
     #            locky,         误报个数：123206, 正确率：0.701
     #            fobber,        误报个数：99773, 正确率：0.5011
+    #            pykspa_v2,     误报个数：39497, 正确率：0.7067
+    #            kraken,        误报个数：36111, 正确率：0.7296
+    #            ramnit,        误报个数：52829, 正确率：0.6007
+    #            dircrypt,      误报个数：26406, 正确率：0.5435
+    #            bedep,         误报个数：8913, 正确率：0.6155
+    #            ranbyus_v1,    误报个数：15777, 正确率：0.009
+    #            sutra,         误报个数：4515, 正确率：0.5431
+    #            unknownjs,     误报个数：7045, 正确率：0.2684
+    #            vidro,         误报个数：4446, 正确率：0.0927
+    #            pizd,          误报个数：1482, 正确率：0.3702
+
+    # tsifiri受大数量样本影响严重
     # 加入pandabanker后tofsee准确率下降至0.7848
     # 加入szribi后tsifiri准确率变为0
     # 加入locky后necurs变为0.8628下降0.03
     lgb_test_1 = ['suppobox', 'shiotob', 'cryptolocker', 'symmi', 'corebot', 'emotet', 'banjori', 'dnschanger',
                   'sphinx', 'tinynuke', 'chinad', 'padcrypt', 'tofsee', 'torpig', 'vawtrak', 'sisron',
-                  'virut', 'bamital', 'tsifiri', 'tinba', 'simda', 'ramdo', 'gameover', 'qadars',
+                  'virut', 'bamital', 'tinba', 'simda', 'ramdo', 'gameover', 'qadars', 'tsifiri',
                   'dyre'] + ['murofet', 'necurs', 'conficker', 'rovnix', 'gameoverp2p',
                              'pushdo', 'matsnu', 'xxhex', 'pandabanker', 'szribi', 'ranbyus', 'gozi', 'proslikefan',
-                             'pykspa_v2']
+                             'volatile', 'murofetweekly', 'enviserv']
 
     family_id = [family_label[x] for x in lgb_test_1]
     lgb_mul_train(c=family_id)
-    verification('mul', zrz=False, c=lgb_test_1)
+    save_df = verification('mul', zrz=False, c=lgb_test_1, model_csv_name='mul_lgb_test1')
     print('当前家族数量: %s' % len(lgb_test_1))
 
 
 def xgb_mul_getbest():
+    less_family = ['feodo', 'randomloader', 'volatile', 'shifu', 'oderoor', 'hesperbot', 'cryptowall', 'ekforward',
+                   'ranbyus_v1', 'ccleaner', 'sphinx', 'tempedreve', 'geodo', 'beebone', 'dnsbenchmark', 'modpack',
+                   'bedep', 'tinynuke', 'tofsee', 'szribi', 'vidro', 'torpig', 'sutra', 'gspy', 'pandabanker', 'sisron',
+                   'xxhex', 'xshellghost', 'omexo', 'tsifiri', 'darkshell', 'mirai', 'pizd', 'madmax', 'blackhole',
+                   'unknownjs', 'redyms', 'shiotob', 'bigviktor']
+    low = ['randomloader', 'cryptowall', 'ccleaner', 'tempedreve', 'geodo', 'pykspa_v2', 'vidro', 'xshellghost']
+    # 结果如下：
     base = ['suppobox', 'corebot', 'emotet', 'banjori', 'tinynuke', 'chinad', 'padcrypt', 'torpig', 'pandabanker',
             'sisron', 'bamital', 'simda', 'ramdo', 'gameover', 'dyre']
-    chosed = []  # 新增没有影响的且效果大于0.8的家族
+    chosed = ['feodo', 'symmi', 'volatile', 'shifu', 'bebloh', 'oderoor', 'pykspa', 'hesperbot', 'matsnu', 'fobber',
+              'pushdo', 'dnsbenchmark', 'mirai', 'madmax', 'bigviktor', 'proslikefan', 'ekforward', 'ranbyus_v1',
+              'murofetweekly', 'rovnix', 'sphinx', 'beebone', 'modpack', 'bedep', 'tofsee', 'szribi', 'sutra',
+              'vawtrak', 'gspy', 'murofet', 'xxhex', 'omexo', 'tsifiri', 'tinba', 'gozi', 'cryptolocker']  # 新增没有影响的且效果大于0.8的家族
     add = []  # 依次添加的家族名，是所有名字中除去base的
     low_acc_family = dict()
     for i in lines_count.keys():
-        if i not in base:
+        if i not in base+chosed+low:
             add.append(i)
     # 依次添加一个家族
-    for i in add:
+    for i in tqdm(add):
         use = base + [i] + chosed
         family_id = [family_label[x] for x in use]
         xgb_mul_train(c=family_id)
         save_df = verification('mul', zrz=False, c=use, model_csv_name='mul_xgb_test1')
         if save_df[save_df['family'] == i]['hit_ratio'].values[0] < 0.8:  # 如果新加入的家族的结果小于0.8, 继续下一个家族
             low_acc_family[i] = save_df[save_df['family'] == i]['hit_ratio'].values[0]
-        elif sum(1 if x < 0.8 else 0 for x in save_df['hit_ratio'].tolist()) == 0:  # 如果新加入的家族对其他家族影响不大
-            save_df.to_csv('/home/lxf/data/DGA/training_results/mul_xgb_test1_res.csv', index=False)
-            chosed.append(i)
         else:
-            continue
+            flag1 = False
+            for family in save_df['family'].values.tolist():
+                flag = False
+                if save_df[save_df['family'] == family]['hit_ratio'].values[0] < 0.8:
+                    if family not in less_family:
+                        flag = True
+                if flag:
+                    flag1 = True  # 新增家族影响其他家族效果
+                    break
+            if flag1:
+                low_acc_family[i] = save_df[save_df['family'] == i]['hit_ratio'].values[0]
+            else:
+                save_df.to_csv('/home/lxf/data/DGA/training_results/mul_xgb_test1_res.csv', index=False)
+                chosed.append(i)
+        # elif sum(1 if x < 0.8 else 0 for x in save_df['hit_ratio'].tolist()) == 0:  # 如果新加入的家族对其他家族影响不大
+        #     save_df.to_csv('/home/lxf/data/DGA/training_results/mul_xgb_test1_res.csv', index=False)
+        #     chosed.append(i)
+        # else:
+        #     continue
     print('用到的家族：')
     print(base)
     print(chosed)
@@ -768,16 +887,29 @@ def similarity_heatmap():
     # plt.show()
 
 
+def get_txt():
+    # 在各家族抽取一些域名测试用
+    path = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/demo/data/families/'
+    file_name = os.listdir(path)
+    with open('/data1/lxf/DGA/data/mul_test_raw.txt', 'w') as a:
+        for name in tqdm(file_name):
+            with open(path+name, 'r') as r:
+                for i in range(100):
+                    a.write(r.readline().split(',')[0] + '\n')
+    print('写入完成')
+
+
+def sometest():
+    # 随便测点啥
+    pass
+
+
 if __name__ == '__main__':
-    # main()
-    # verification('mul')
     # xgb_mul_gridsearch()
     # lgb_mul_gridsearch()
     # xgb_mul_train()
     # lgb_mul_train(c=family_id)
     # verification('mul', zrz=False, c=col)
-    # performance()
-    # similarity_heatmap()
-    xgb_mul_getbest()
-    # lgb_mul_getbest()
-    # xgb_bin_train()
+    # performance(min_features=True)
+    main()
+    # xgb_mul_gpu_train()
