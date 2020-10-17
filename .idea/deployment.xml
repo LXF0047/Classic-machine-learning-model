@@ -33,14 +33,14 @@
       <paths name="root@172.16.1.10:22">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/lxf/projects/auto_boosting" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>
       <paths name="root@172.16.1.10:22 (1)">
         <serverdata>
           <mappings>
-            <mapping local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/lxf/projects/auto_boosting" local="$PROJECT_DIR$" web="/" />
           </mappings>
         </serverdata>
       </paths>

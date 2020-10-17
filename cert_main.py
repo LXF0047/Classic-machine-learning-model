@@ -1,7 +1,7 @@
 # 用于其他在10服务器上的验证
 import os
 from tqdm import tqdm
-# from utils.utils import isEnglish
+from utils.utils import isEnglish
 import Levenshtein
 
 
@@ -74,43 +74,52 @@ def new_dga_sample(company, hard=True):
     import random
     path = '/data1/lxf/DGA/'
     black1 = []  # 其他类型dga  都用  2949
-    black2 = []  # 单词类型dga  取部分用
+    black2 = []  # 单词类型dga  都用  40257
     black3 = []  # 容易检出的dga  差多少到5w用多少
     white1 = []  # 长的白域名  16876
     white2 = []  # 短的白域名
-    with open(path + 'hard2detect.txt', 'r') as hard1:
+    domain_list = dict()
+    with open('/home/lxf/data/DGA/word_dga/raw/pykspa3000', 'r') as hard1:  # path + 'hard2detect.txt'
         for i in hard1:
             black1.append(i.split(',')[0] + '\n')
     with open(path + 'hard2detect_words.txt', 'r') as hard2:
         for i in hard2:
             black2.append(i.split(',')[0] + '\n')
-    with open(path + 'easy2detect.txt', 'r') as easy:
+    with open('/home/lxf/data/DGA/word_dga/raw/conficker6000', 'r') as easy:  # path + 'easy2detect.txt'
         for i in easy:
-            black3.append(i)
+            black3.append(i.strip() + '\n')
     with open(path + 'white_long.txt', 'r') as long:
         for i in long:
             white1.append(i)
     with open(path + 'white_short.txt', 'r') as short:
         for i in short:
             white2.append(i)
+    with open('/home/lxf/data/intel/domain.list', 'r') as intel:
+        for line in intel:
+            domain_list[line.split(',')[0]] = 0
 
     if hard:
         _black = []
-        for i in range(37051):
-            _black.append(random.choice(black2))
-        for i in range(10000):
-            _black.append(random.choice(black3))
+        # for i in range(37051):
+        #     _black.append(random.choice(black2))
+        # for i in range(6000):
+        #     _black.append(random.choice(black3))
         _white = []
         for i in range(33124):
-            _white.append(random.choice(white2))
+            w_ = random.choice(white2)
+            if w_ not in domain_list:
+                _white.append(w_)
+            else:
+                continue
         # res = black1 + _black + white1 + _white
-        black_res = black1 + _black
+        black_res = black1 + black3 + black2  # 2949+6000+40257=49206
         white_res = white1 + _white
-        print(len(black_res + white_res))
-        with open(path + company + '_hard_black.txt', 'w') as w:
+        print('白样本去重数量： %s， 黑样本去重数量：%s' % (len(set(white_res)), len(set(black_res))))
+        print('总样本数量： %s' % len(black_res + white_res))
+        with open(path + company + '_hard_black_new.txt', 'w') as w:
             for i in black_res:
                 w.write(i)
-        with open(path + company + '_hard_white.txt', 'w') as w:
+        with open(path + company + '_hard_white_new.txt', 'w') as w:
             for i in white_res:
                 w.write(i)
     else:
@@ -223,5 +232,5 @@ if __name__ == '__main__':
     # res_compare()
     # test2()
     # importance_plot()
-    # new_dga_sample('B', hard=False)
-    check_intel_domain()
+    new_dga_sample('B', hard=True)
+    # check_intel_domain()

@@ -4,7 +4,10 @@ import wordninja
 import xgboost as xgb
 import re
 import wordsegment as ws
-from pybloomfilter import BloomFilter
+# from pybloomfilter import BloomFilter
+import lightgbm as lgb
+from utils.utils import train_data_split
+from utils.score import _f1_score
 import enchant
 from tqdm import tqdm
 
@@ -13,23 +16,23 @@ ws.load()
 
 
 def load_black_data():
-    file_path = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/demo/data/families/'
-    file_names = ['gozi']  # , 'suppobox', 'gozi'
-    res = []
-    for name in file_names:
-        with open(file_path + name, 'r') as r:
-            for line in r:
-                res.append(line.split('.')[0])
-    return res
+    file_path = '/home/lxf/data/DGA/word_dga/feature/'
+    file_names = ['gozi', 'suppobox', 'gozi']
+    data = pd.read_csv(file_path + file_names[0])
+    for file in file_names[1:]:
+        # print(file)
+        tmp = pd.read_csv(file_path + file)
+        pd.concat([data, tmp])
+    data.drop(['family'], axis=1, inplace=True)
+    print('DGA黑样本%s条读取完成' % data.shape[0])
+    return data
 
 
-def load_handel_white_data():
-    # path_1 = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/new_feature/legit.csv'  # 训练白样本
-    # path_2 = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/demo/data/top1w.txt'  # top1w白名单
-    path_3 = '/home/lxf/data/DGA/words_white_dga.txt'
-    with open(path_3, 'r') as r:
-        white = r.readlines()
-    return white
+def load_white_data(n=1667269):
+    data = pd.read_csv('/home/lxf/data/DGA/word_dga/feature/legit_words', nrows=n)
+    data.drop(['family'], axis=1, inplace=True)
+    print('DGA白样本%s条读取完成' % data.shape[0])
+    return data
 
 
 def pinyin_tokens(text):
@@ -97,25 +100,116 @@ def re_split(sentence):
             return re_split(tmp3)
 
 
+def xgb_model(X_t, X_v, y_t, y_v):
+    xgb_val = xgb.DMatrix(X_v, label=y_v)
+    xgb_train = xgb.DMatrix(X_t, label=y_t)
+    xgb_params = {
+        'eta': 0.1,
+        'booster': 'gbtree',
+        'objective': 'binary:logistic',
+        'eval_metric': 'auc',
+        'verbosity': 2,
+        'tree_method': 'gpu_hist'
+    }
+    plst = list(xgb_params.items())
+    num_rounds = 1500
+    watchlist = [(xgb_train, 'train'), (xgb_val, 'val')]
+    model = xgb.train(plst, xgb_train, num_rounds, watchlist,
+                      early_stopping_rounds=50)
+    return model
+
+
+def lgb_model(X_t, X_v, y_t, y_v):
+    params = {
+        'learning_rate': 0.1,
+        'boosting_type': 'gbdt',
+        'objective': 'binary',
+        'metric': {'binary_logloss', 'auc'},
+    }
+    lgb_train = lgb.Dataset(X_t, y_t)
+    lgb_eval = lgb.Dataset(X_v, y_v, reference=lgb_train)
+    gbm = lgb.train(params, lgb_train, num_boost_round=1500, valid_sets=lgb_eval, early_stopping_rounds=50)
+    return gbm
+
+
+def train(model_name, sample_percent):
+    '''
+    :param model_name: 保存的模型文件名
+    :param sample_percent: 采样时白样本是黑样本的几倍，最大7倍
+    :return:
+    '''
+    # black 235785
+    # white 1667269
+    # 加载训练集
+    print('保存模型名称: %s, 黑白样本采样比例(黑 : 白) : 1:%s' % (model_name, sample_percent))
+    black = load_black_data()
+    black['label'] = 1
+    white = load_white_data(n=sample_percent*black.shape[0])
+    white['label'] = 0
+    print('[训练集] 黑样本数量：%s，白样本数量：%s' % (black.shape[0], white.shape[0]))
+    train_data = pd.concat([black, white])
+    X_t, X_v, y_t, y_v = train_data_split(train_data)
+    # 训练
+    xgb_m = xgb_model(X_t, X_v, y_t, y_v)
+    lgb_m = lgb_model(X_t, X_v, y_t, y_v)
+    # 保存模型
+    xgb_m.save_model('/home/lxf/data/DGA/word_dga/modules/xgb_%s.model' % model_name)
+    lgb_m.save_model('/home/lxf/data/DGA/word_dga/modules/lgb_%s.model' % model_name)
+
+
+def verification(model_name):
+    # 验证模型效果
+    xgb_m = xgb.Booster(model_file='/home/lxf/data/DGA/word_dga/modules/xgb_%s.model' % model_name)
+    lgb_m = lgb.Booster(model_file='/home/lxf/data/DGA/word_dga/modules/lgb_%s.model' % model_name)
+    black_ = load_black_data()
+    # 预测所有黑样本
+    xgb_b_r = [round(x) for x in xgb_m.predict(xgb.DMatrix(black_))]
+    lgb_b_r = [round(x) for x in lgb_m.predict(black_)]
+    xgb_black = (sum(xgb_b_r) / len(xgb_b_r))
+    lgb_black = (sum(lgb_b_r) / len(lgb_b_r))
+    # 预测所有白样本
+    white_ = load_white_data(n=1667268)
+    xgb_w_r = [round(x) for x in xgb_m.predict(xgb.DMatrix(white_))]
+    lgb_w_r = [round(x) for x in lgb_m.predict(white_)]
+    xgb_white_ = (1 - sum(xgb_w_r) / len(xgb_w_r))
+    lgb_white_ = (1 - sum(lgb_w_r) / len(lgb_w_r))
+
+    print('[黑样本准确率] XGB: %s, LGB: %s' % (xgb_black, lgb_black))
+    print('[白样本准确率] XGB: %s, LGB: %s' % (xgb_white_, lgb_white_))
+
+
+def main():
+    model_name = ''
+    sample_percent = 1
+    train(model_name, sample_percent)
+    verification(model_name)
+
 
 if __name__ == '__main__':
-    # data = load_black_data()
-    # d = enchant.Dict("en_US")
-    # not_word_count = 0
-    # for i in tqdm(data):
-    #     # if not ws.segment(i) == wordninja.split(i):
-    #     #     print(i, '>>>ws: ', ws.segment(i), '>>>nj: ', wordninja.split(i))
-    #     split = re_split(i)
-    #     res = [1 if not d.check(x) else 0 for x in split]
-    #     if sum(res) != 0:
-    #         # 存在无意义的词
-    #         not_word_count += 1
-    # print(not_word_count/len(data))
-
-    load_handel_white_data()
-
+    # train()
+    load_black_data()
+    load_white_data()
     # matsnu 0.024512701880649444
     # suppobox 0.37164895045857477
     # gozi 0.77
 
+    # 原来RF模型对白样本的误报0.133590            0.04478
+    # xgb白样本误报0.000670                     0.0007
+    # lgb白样本误报0.013980                     0.00644
+
+    # 3000lgb白样本误报0.011320          0.01473
+    # 3000xgb白样本误报0.000670          0.00073
+
+
+    # 3000trees的准确率
+    # [黑样本准确率]
+    # XGB: 0.9680707428568928, LGB: 0.9663562177102764
+    # [白样本准确率]
+    # XGB: 0.9944855895992726, LGB: 0.9945821547585632
+
+    # 1000trees准确率
+    # [黑样本准确率]
+    # XGB: 0.9358297941480456, LGB: 0.9387109333681418
+    # [白样本准确率]
+    # XGB: 0.9897293056665155, LGB: 0.9902061336269874
 

@@ -8,11 +8,12 @@ import pandas as pd
 from scipy import stats
 from joblib.parallel import Parallel, delayed
 from sklearn.feature_extraction.text import CountVectorizer
-dga_suffix_file = '/data0/new_workspace/mlxtend_dga_bin_20190307/merge/demo/public_suffix.txt'
+dga_suffix_file = '/data1/new_workspace/mlxtend_dga_multi_20190316/merge/demo/public_suffix.txt'
 
 
 class UnsuitableFeatureOrderException(Exception):
     pass
+
 
 class PublicSuffixes:
     """
@@ -471,7 +472,7 @@ class DGAExtractFeatures(object):
         :param data: iterable containing domain name strings
         :return: feature matrix as np array
         """
-        feature_matrix = [ self.extract_features(d, self.ALL_FEATURES) for d in data ]
+        feature_matrix = [self.extract_features(d, self.ALL_FEATURES) for d in data ]
     
         return np.array(feature_matrix)
     
