@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData">
+  <component name="PublishConfigData" autoUpload="Always" serverName="root@172.16.1.10:22">
     <serverData>
       <paths name="atd@172.16.1.47:61001">
         <serverdata>
@@ -33,7 +33,7 @@
       <paths name="root@172.16.1.10:22">
         <serverdata>
           <mappings>
-            <mapping deploy="/home/lxf/projects/auto_boosting" local="$PROJECT_DIR$" web="/" />
+            <mapping deploy="/home/lxf/projects/auto_boosting" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>
@@ -52,5 +52,6 @@
         </serverdata>
       </paths>
     </serverData>
+    <option name="myAutoUpload" value="ALWAYS" />
   </component>
 </project>

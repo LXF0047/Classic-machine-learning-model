@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+# -*- coding:utf-8 -*-
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -582,7 +584,7 @@ def extract_feature(domains):
 
 def new2vectors():
     path2 = '/home/lxf/data/DGA/word_dga/raw/'
-    new2 = ['legit_words']
+    new2 = ['legit_notwords']
     cols = ['domain_len', '_contains_digits', '_subdomain_lengths_mean', '_n_grams0', '_n_grams1',
             '_n_grams4', '_hex_part_ratio', '_alphabet_size', '_shannon_entropy', '_consecutive_consonant_ratio',
             'domain_seq35', 'domain_seq36', 'domain_seq38', 'domain_seq39', 'domain_seq40', 'domain_seq41',
@@ -986,7 +988,7 @@ if __name__ == '__main__':
     # lgb_mul_train(c=family_id)
     # verification('mul', zrz=False, c=col)
     # performance(min_features=True)
-    bin_train()
+    new2vectors()
     # xgb_mul_gpu_train()
 
 

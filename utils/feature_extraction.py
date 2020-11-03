@@ -9,6 +9,7 @@ from scipy import stats
 from joblib.parallel import Parallel, delayed
 from sklearn.feature_extraction.text import CountVectorizer
 dga_suffix_file = '/data1/new_workspace/mlxtend_dga_multi_20190316/merge/demo/public_suffix.txt'
+# /home/soft/resource/aimatrix/dga/data/public_suffix.txt
 
 
 class UnsuitableFeatureOrderException(Exception):

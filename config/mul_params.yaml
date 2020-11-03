@@ -1,0 +1,41 @@
+#
+# Model parameters
+#
+
+# mul
+mul:
+  xgboost:
+    eta: 0.1
+    subsample: 0.7
+    booster: gbtree
+    objective: multi:softmax
+    num_class: 3
+    eval_metric: mlogloss
+    verbosity: 2
+    tree_method: gpu_hist
+    gpu_id: 0
+
+
+  lightgbm:
+    learning_rate: 0.1
+    boosting_type: gbdt
+    objective: multiclass
+    num_class: 3
+    metric: multi_logloss
+    nthread: -1
+
+bin:
+  xgboost:
+    eta: 0.1
+    booster: gbtree
+    objective: binary:logistic
+    eval_metric: auc
+    verbosity: 2
+    tree_method: gpu_hist
+    gpu_id: 0
+
+  lightgbm:
+    learning_rate: 0.1
+    boosting_type: gbdt
+    objective: binary
+    metric: '{binary_logloss, auc}'

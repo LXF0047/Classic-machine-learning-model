@@ -10,7 +10,7 @@ from ngboost.distns import k_categorical, Bernoulli
 class BoostingModules(object):
     def __init__(self, train_data):
         self.rounds = 2000
-        self.early_stop = 200
+        self.early_stop = 10
         self.X_t, self.X_v, self.y_t, self.y_v = train_data_split(train_data)
         self.modelname = None
 
@@ -182,8 +182,8 @@ class BoostingModules(object):
                                    logging_level='Verbose', eval_metric='AUC')
         model.fit(self.X_t, self.y_t, eval_set=(self.X_v, self.y_v), early_stopping_rounds=self.early_stop)
         # res = model.predict_proba(self.test)[:, 1]
-        # importance = model.get_feature_importance(prettified=True)  # 显示特征重要程度
-        # print(importance)
+        importance = model.get_feature_importance(prettified=True)  # 显示特征重要程度
+        print(importance)
         if self.modelname is not None:
             model.save_model(self.modelname + '_cb.model')
         return model
@@ -193,3 +193,68 @@ class BoostingModules(object):
         ng_clf = ngb_cat.fit(self.X_t, self.y_t)
         print(ng_clf.feature_importances_)
         return ng_clf
+
+    # xgb多gpu训练准备并行训练数据
+    def load_higgs_for_dask(self, client, X_t, X_v, y_t, y_v):
+        from xgboost.dask import DaskDMatrix
+        '''
+        :param client: gpu设备
+        :param X_t: 训练集
+        :param X_v: 验证集
+        :param y_t: 训练集标签
+        :param y_v: 验证集标签
+        :return: dask.datafram格式的数据
+        '''
+        import dask.dataframe as dd
+        # 1. Create a Dask Dataframe from Pandas Dataframe.
+        ddf_higgs_train = dd.from_pandas(X_t, npartitions=8)
+        ddf_higgs_test = dd.from_pandas(X_v, npartitions=8)
+        ddf_y_train = dd.from_pandas(y_t, npartitions=8)
+        ddf_y_test = dd.from_pandas(y_v, npartitions=8)
+        # 2. Create Dask DMatrix Object using dask dataframes
+        ddtrain = DaskDMatrix(client, ddf_higgs_train, ddf_y_train)
+        ddtest = DaskDMatrix(client, ddf_higgs_test, ddf_y_test)
+
+        return ddtrain, ddtest
+
+    def xgb_mul_gpu_train(self):
+        import time
+        from dask_cuda import LocalCUDACluster
+        from dask.distributed import Client
+        from utils.utils import second2hms
+        '''
+        :param X_t: train
+        :param X_v: test
+        :param y_t: train label
+        :param y_v: test label
+        :return: fitted model
+        '''
+        # https://xgboost.readthedocs.io/en/latest/gpu/index.html  xgb官方文档
+        # https://examples.dask.org/machine-learning/xgboost.html  dask官方文档
+        # https://towardsdatascience.com/lightning-fast-xgboost-on-multiple-gpus-32710815c7c3  案例
+        # https://gist.github.com/MLWhiz/44d39ab3a01fe4e57c974133276705f9  数据集并行处理方式
+        # pip install fsspec>=0.3.3
+
+        n_family = len(set(self.y_t.tolist()))
+
+        with LocalCUDACluster(n_workers=8) as cluster:
+            with Client(cluster) as client:
+                print('数据集并行化处理')
+                ddtrain, ddtest = self.load_higgs_for_dask(client, self.X_t, self.X_v, self.y_t, self.y_v)
+                param = {'objective': 'binary:logistic',
+                         'eta': 0.1,
+                         'eval_metric': 'auc',
+                         'verbosity': 2,
+                         'tree_method': 'gpu_hist',
+                         }
+                # 'nthread': -1
+                print("多GPU训练开始 ...")
+                tmp = time.time()
+                output = xgb.dask.train(client, param, ddtrain, num_boost_round=10000, evals=[(ddtest, 'test')])
+                multigpu_time = time.time() - tmp
+                print('训练完成')
+                bst = output['booster']
+                multigpu_res = output['history']
+                h, m, s = second2hms(multigpu_time)
+                print("Multi GPU Training Time: %s h %s m %s s" % (h, m, s))
+        return bst
