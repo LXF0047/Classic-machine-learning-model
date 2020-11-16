@@ -436,7 +436,7 @@ class Tls(object):
         except:
             byte = None
         if byte is None:
-            print("tls cipher of '%s' is not in the cipher_bytes_map." % cipher)
+            print("tls cipher of '' is not in the cipher_bytes_map.")
             byte = ""
         return byte
 
