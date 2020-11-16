@@ -1,14 +1,15 @@
 import pandas as pd
+import numpy as np
 from sklearn.svm import SVC
 import re
 from utils.tools import eda
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import cross_val_predict, cross_val_score
 
 
 def base_info(t='train'):
     cat = ['oplocdistrict', 'industryphy', 'industryco', 'dom', 'enttype', 'enttypeitem', 'oploc', 'state',
-           'orgid', 'jobid', 'adbusign', 'townsign', 'regtype', 'venind'
-           ]  #
+           'orgid', 'jobid', 'adbusign', 'townsign', 'regtype']  #
     if t == 'train':
         data = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/train/base_info.csv')
     else:
@@ -35,45 +36,47 @@ def base_info(t='train'):
     # 将起始时间变为经营时长, 删除原有opfrom和opto列
     data['opfrom'] = pd.to_datetime(data['opfrom']).dt.year.astype('int')
     data['opyears'] = 2020 - data['opfrom']
+    # 20201116新增将结束时间变为还有多久结束  线下0.8155909265783258 线上0.821
+    # data['opto'].fillna('1990/1/1', inplace=True)
+    # data['opto'] = pd.to_datetime(data['opto']).dt.year.astype('int')
+    # data['left_years'] = data['opto'] - 2020
     data.drop(['opfrom', 'opto'], axis=1, inplace=True)
     # 经营人数填充缺失值0
     data['empnum'].fillna(0, inplace=True)
     # 删除缺失值多的列
-    # compform    9784
+    # compform    9784   值只有1,2，和空值
     # parnum    13195
     # exenum    14132
     # opform    9964  # 略微下降
     # enttypeminu    10085
     # protype    14845
-    # reccap    11883
+    # reccap    11883    实缴资本
     # forreccap    14826
     # forregcap    14808
     # congro    14809
 
     # 对缺失的尝试
-    # venind提升明显0.8298
+    # 20201115新增 venind提升明显0.82988042000 三折交叉验证f1值0.8026493854479493
     data['venind'].fillna('0', inplace=True)
     data['venind'] = data['venind'].astype('str')
     cat = cat + ['venind']
+
+    # 20201116新增 compform 线下0.8086850098390341 线上0.81620950307 下降了
+    # data['compform'].fillna('0', inplace=True)
+    # data['compform'] = data['compform'].astype('str')
+    # cat = cat + ['compform']
+
+    # 20201116新增实缴资本/注册资本  reccap/regcap
 
     # 类别标签转为int
     # for item in cat:
     #     data[item] = LabelEncoder().fit_transform(data[item])
 
-    data.drop(['compform', 'parnum', 'opform', 'exenum', 'enttypeminu', 'protype', 'reccap',
-               'forreccap', 'forregcap', 'congro'], axis=1, inplace=True)
+    data.drop(['parnum', 'opform', 'exenum', 'enttypeminu', 'protype', 'reccap',
+               'forreccap', 'forregcap', 'congro', 'compform'], axis=1, inplace=True)
+    # 20201116删除compform
 
     return data, cat
-
-
-def base_opscope(df):
-    import re
-    pattern = r',|\.|/|;|\'|`|\[|\]|<|>|\?|:|"|\{|\}|\~|!|@|#|\$|%|\^|&|\(|\)|-|=|\_|\+|，|。|、|；|‘|’|【|】|·|！| |…|（|）'
-    words = []
-    for i in df:
-        tmp1 = i.replace('（依法须经批准的项目，经相关部门批准后方可开展经营活动）', '')
-        result_list = re.split(pattern, tmp1)
-        print(result_list)
 
 
 def annual_report_info():
@@ -82,6 +85,9 @@ def annual_report_info():
     data = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/train/annual_report_info.csv')
     # 企业年报年度个数
     year_count = data.groupby(['id'])['ANCHEYEAR'].count().reset_index(name='year_count')
+
+    # 20201116新增从业人数是否公示 EMPNUMSIGN  公示状态PUBSTATE  是否对外投资FORINVESTSIGN
+
     print(data['id'].nunique())
     return data
 
@@ -154,6 +160,9 @@ def merge_df(t='train'):
         train_ = pd.merge(train_data, _label, on='id', how='outer')
         train_.drop(['id'], axis=1, inplace=True)
         return train_, cat_feature
+    elif t == 'cv':
+        train_ = pd.merge(train_data, _label, on='id', how='outer')
+        return train_
     else:
         train_data.drop(['id'], axis=1, inplace=True)
         return train_data
@@ -164,7 +173,7 @@ def save_res(name, pre):
     if name is None:
         name = 'res'
     res_id = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/test/base_info.csv')['id'].tolist()
-
+    pre = [round(x) for x in pre]
     res_dict = {'id': res_id, 'score': pre}
     res_df = pd.DataFrame(res_dict)
     res_df.to_csv('/home/lxf/projects/auto_boosting/competitions/illegal_fund_raising/predict_res/%s.csv' % name, index=False)
@@ -180,24 +189,19 @@ def cb_train():
     test_data = merge_df(t='test')
     test_data.fillna(0, inplace=True)
     res = cb_m.predict(test_data)
-    print(sum([round(x) for x in res]))
-
+    print('预测结果中非法集资企业个数：%s' % sum([round(x) for x in res]))
     # save result file
-    save_res('best_add_venind_3', res)
+    save_res('best_add_venind_01', res)
+    # 线下交叉验证
+    cross_validation(cb_m, cv_iter=3)
 
 
-def rf_train():
-    from machine_learning.ensemble_learning.random_forest import rf_model
+def cross_validation(model, cv_iter=5):
     train_data, cat_feature = merge_df(t='train')
-    rf_m = rf_model(train_data)
-    # load test data
-    test_data = merge_df(t='test')
-    test_data.fillna(0, inplace=True)
-    res = rf_m.predict(test_data)
-    print(sum([round(x) for x in res]))
-
-    # save result file
-    save_res('best_add_venind_rf', res)
+    _label = train_data['label']
+    train_data.drop(['label'], axis=1, inplace=True)
+    score = cross_val_score(model, train_data, _label, scoring='f1', cv=cv_iter, verbose=0, n_jobs=-1)
+    print('%s折交叉验证结果：%s' % (cv_iter, np.mean(score)))
 
 
 def full_info_companies():
