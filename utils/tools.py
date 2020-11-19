@@ -49,3 +49,9 @@ def log_evaluation(period=1, show_stdv=True):
             logger.info('[%d]\t%s\n' % (i, msg))
 
     return callback
+
+
+if __name__ == '__main__':
+    import pandas as pd
+    df = pd.read_csv('/home/lxf/data/tor/train_data/conn_data.csv')
+    eda(df, '/home/lxf/data/tor/train_data/', filename='conn')
