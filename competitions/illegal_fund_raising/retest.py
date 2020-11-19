@@ -32,7 +32,6 @@ def base_info(t='train'):
     data['dom'] = data['dom'].map(lambda x: x[:10])
     # 经营场所
     data['oploc'] = data['oploc'].map(lambda x: x[:10])
-    print(data['oploc'].nunique())
     # 将起始时间变为经营时长, 删除原有opfrom和opto列
     data['opfrom'] = pd.to_datetime(data['opfrom']).dt.year.astype('int')
     data['opyears'] = 2020 - data['opfrom']
@@ -44,10 +43,10 @@ def base_info(t='train'):
     # 经营人数填充缺失值0
     data['empnum'].fillna(0, inplace=True)
     # 删除缺失值多的列
-    # compform    9784   值只有1,2，和空值
+    # compform    9784   值只有1,2，和空值 效果下降
     # parnum    13195
     # exenum    14132
-    # opform    9964  # 略微下降
+    # opform    9964   下降
     # enttypeminu    10085
     # protype    14845
     # reccap    11883    实缴资本
@@ -61,35 +60,64 @@ def base_info(t='train'):
     data['venind'] = data['venind'].astype('str')
     cat = cat + ['venind']
 
-    # 20201116新增 compform 线下0.8086850098390341 线上0.81620950307 下降了
+    # 废弃20201116新增 compform 线下0.8086850098390341 线上0.81620950307 下降了
     # data['compform'].fillna('0', inplace=True)
     # data['compform'] = data['compform'].astype('str')
     # cat = cat + ['compform']
 
-    # 20201116新增实缴资本/注册资本  reccap/regcap
+    # 废弃20201117新增实缴资本类别交了1没交0缺失-1， 线下0.8173819324710285  线上0.82085174357
+    # data['reccap'].fillna('na', inplace=True)
+    # data['reccap'] = data['reccap'].astype('str')
+    # data['reccap_cat'] = data['reccap'].apply(lambda x: 'neg' if x == '0.0' else ('na' if x == 'na' else 'pos'))
+    # cat = cat + ['reccap_cat']
 
-    # 类别标签转为int
+    # 废弃20201117新增 opform处理  线下0.8090691301480373 线上0.81361617319
+    # data['opform'].fillna('na', inplace=True)
+    # cat = cat + ['opform']
+
+    # 类别标签转为int,效果骤减
     # for item in cat:
     #     data[item] = LabelEncoder().fit_transform(data[item])
 
-    data.drop(['parnum', 'opform', 'exenum', 'enttypeminu', 'protype', 'reccap',
+    # 删除模型重要程度为0的特征
+    # data.drop(['oplocdistrict', 'industryco', 'orgid', 'jobid', 'adbusign', 'oploc'], axis=1, inplace=True)
+
+    # 删除缺失和效果不好的基本特征
+    data.drop(['parnum', 'exenum', 'enttypeminu', 'protype', 'reccap', 'opform',
                'forreccap', 'forregcap', 'congro', 'compform'], axis=1, inplace=True)
-    # 20201116删除compform
 
     return data, cat
 
 
-def annual_report_info():
+def annual_report_info(t='train'):
     # 3336家公司有企业年报信息
+    # cat = ['emp_sign']
     cat = []
-    data = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/train/annual_report_info.csv')
+
+    if t == 'train':
+        data = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/train/annual_report_info.csv')
+    else:
+        data = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/test/annual_report_info.csv')
+
     # 企业年报年度个数
     year_count = data.groupby(['id'])['ANCHEYEAR'].count().reset_index(name='year_count')
 
-    # 20201116新增从业人数是否公示 EMPNUMSIGN  公示状态PUBSTATE  是否对外投资FORINVESTSIGN
+    # 20201117新增
+    # EMPNUMSIGN是否公示不同年份取均值，缺失值用0补充，合并到base后缺失值用-1补充  预测出974个 线下0.8064449778114495  线上0.81863103426
+    # data['EMPNUMSIGN'].fillna(0, inplace=True)
+    # tmp1 = data.groupby(['id'])['EMPNUMSIGN'].mean().reset_index(name='emp_sign')
 
-    print(data['id'].nunique())
-    return data
+    # 公示状态PUBSTATE  目前是按照均值做的，可以拆成不同列来表示状态  预测出945个  线下0.8092665836765024  线上0.81924896087
+    # data['PUBSTATE'].fillna(0, inplace=True)
+    # tmp2 = data.groupby(['id'])['PUBSTATE'].mean().reset_index(name='pub_state')
+
+    # 是否对外投资FORINVESTSIGN  目前是按照均值做的，可以拆成不同列来表示状态  预测出933个 线下0.8054878669608566  线上0.82022339366
+    # data['FORINVESTSIGN'].fillna(0, inplace=True)
+    # tmp3 = data.groupby(['id'])['FORINVESTSIGN'].mean().reset_index(name='for_invest')
+    # res = tmp3[['id', 'for_invest']]
+
+
+    return year_count, cat
 
 
 def change_info(t='train'):
@@ -128,13 +156,30 @@ def other_info():
     return data
 
 
-def tax_info():
+def tax_info(t):
     cat = []
-    data = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/train/tax_info.csv')
+    if t == 'train':
+        data = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/train/tax_info.csv')
+    else:
+        data = pd.read_csv('/home/lxf/projects/competion/illegal_fund/data/test/tax_info.csv')
     # 平均税额
-    tax_mean = data.groupby(['id'])['TAX_AMOUNT'].mean().reset_index(name='tax_mean')
+    # tax_mean = data.groupby(['id'])['TAX_AMOUNT'].mean().reset_index(name='tax_mean')
 
-    return tax_mean, cat
+    # TAX_ITEMS中包括罚款的次数
+    # fakuan_count = {}
+    # for index, line in data.iterrows():
+    #     if '罚款' in line['TAX_ITEMS']:
+    #         if line['id'] not in fakuan_count:
+    #             fakuan_count[line['id']] = 1
+    #         else:
+    #             fakuan_count[line['id']] += 1
+    # fakuan_d = {'id': [], 'fakuan_count': []}
+    # for i in fakuan_count:
+    #     fakuan_d['id'].append(i)
+    #     fakuan_d['fakuan_count'].append(fakuan_count[i])
+    # fakuan_df = pd.DataFrame(fakuan_d)
+
+    return data, cat
 
 
 def label():
@@ -145,16 +190,31 @@ def label():
 def merge_df(t='train'):
     _label = label()
     # beta0.1 使用base和change两个表的信息
-    base_data, cat_feature = base_info(t)
+    base_data, base_cat = base_info(t)
     change_data = change_info(t)
     train_data = pd.merge(base_data, change_data, on='id', how='outer')
     train_data['industryco'].fillna(0, inplace=True)
     train_data['enttypeitem'].fillna(0, inplace=True)
     train_data['regcap'].fillna(0, inplace=True)
     train_data['change_times'].fillna(0, inplace=True)
+
+    # 加入企业年报信息
+    # annual_data, annual_cat = annual_report_info(t)
+    # train_data = pd.merge(train_data, annual_data, on='id', how='outer')
+    # train_data['emp_sign'].fillna(-1, inplace=True)
+    # train_data['pub_state'].fillna(-1, inplace=True)
+    # train_data['for_invest'].fillna(-1, inplace=True)
+
+    # 加入税务信息
+    # tax_data, tax_cat = tax_info(t)
+    # train_data = pd.merge(train_data, tax_data, on='id', how='outer')
+    # train_data['fakuan_count'].fillna(-1, inplace=True)
+
+    cat_feature = base_cat
+
     for c in cat_feature:
         if isinstance(train_data[c][10], float):
-            train_data[c] = train_data[c].astype('int')
+            train_data[c] = train_data[c].astype('str')
 
     if t == 'train':
         train_ = pd.merge(train_data, _label, on='id', how='outer')
@@ -191,9 +251,9 @@ def cb_train():
     res = cb_m.predict(test_data)
     print('预测结果中非法集资企业个数：%s' % sum([round(x) for x in res]))
     # save result file
-    save_res('best_add_venind_01', res)
+    # save_res('best_add_annual_forinvest', res)
     # 线下交叉验证
-    cross_validation(cb_m, cv_iter=3)
+    # cross_validation(cb_m, cv_iter=3)
 
 
 def cross_validation(model, cv_iter=5):
@@ -245,3 +305,5 @@ if __name__ == '__main__':
     # full_info_companies()
     # rf_train()
     # news_info()
+    # annual_report_info(t='test')
+    # tax_info(t='train')
