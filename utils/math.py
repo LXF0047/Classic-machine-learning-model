@@ -118,3 +118,24 @@ def entropy(prob):
     :return:
     """
     return -1*prob*math.log(prob, 2)
+
+
+def normalization(data):
+    """
+    归一化
+    :param data:
+    :return:
+    """
+    _range = np.max(data) - np.min(data)
+    return (data - np.min(data)) / _range
+
+
+def standardization(data):
+    """
+    标准化
+    :param data:
+    :return:
+    """
+    mu = np.mean(data, axis=0)
+    sigma = np.std(data, axis=0)
+    return (data - mu) / sigma
